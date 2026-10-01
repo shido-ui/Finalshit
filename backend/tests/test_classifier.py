@@ -1,3 +1,5 @@
+import pymupdf
+
 from app.knowledge.classifier import KeywordTaxonomyClassifier
 from app.knowledge.models import ClassificationStatus, QuestionCandidate
 from app.knowledge.service import KnowledgeService
@@ -21,6 +23,21 @@ def question(text: str) -> QuestionCandidate:
         page_end=1,
         text=text,
     )
+
+
+def make_pdf() -> bytes:
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text(
+        (50, 60),
+        "1. Find the force and velocity of the particle.\n"
+        "(A) 1\n(B) 2\n(C) 3\n(D) 4\n"
+        "2. What is the reaction rate?\n"
+        "(A) 1\n(B) 2\n(C) 3\n(D) 4",
+    )
+    content = document.tobytes()
+    document.close()
+    return content
 
 
 def test_strong_subject_evidence_is_classified():
@@ -68,8 +85,6 @@ def test_classifier_never_returns_unknown_taxonomy_ids():
 def test_service_persists_classification_state(tmp_path):
     store = KnowledgeStore(tmp_path / "knowledge.db")
     service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
-
-    from tests.test_knowledge_engine import make_pdf
 
     record = service.ingest_pdf("sample.pdf", make_pdf())
     questions = store.get_questions(record.id)
