@@ -62,7 +62,7 @@ class KnowledgeService:
         self.question_intelligence = question_intelligence
         self.solution_engine = solution_engine
 
-    def ingest_pdf(self, filename: str, content: bytes) -> DocumentRecord:
+    def ingest_pdf(self, filename: str, content: bytes, *, process: bool = True) -> DocumentRecord:
         if not content:
             raise ValueError("PDF content is empty")
         if not filename.lower().endswith(".pdf"):
@@ -100,6 +100,8 @@ class KnowledgeService:
             updated_at=self.store.now(),
         )
         self.store.save_job(job)
+        if not process:
+            return record
         return self.process_document(job.id)
 
     @staticmethod
