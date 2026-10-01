@@ -17,7 +17,7 @@ def test_health_exposes_security_headers_and_request_id() -> None:
 
 def test_invalid_request_id_is_replaced() -> None:
     client = TestClient(app)
-    response = client.get("/health", headers={"X-Request-ID": "x".repeat(129)})
+    response = client.get("/health", headers={"X-Request-ID": "x" * 129})
 
     assert response.status_code == 200
     request_id = response.headers["X-Request-ID"]
