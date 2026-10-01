@@ -98,7 +98,14 @@ class KnowledgeService:
         self.store.save_document(running)
 
         try:
+            actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+            if actual_hash != record.sha256:
+                raise ValueError("Source PDF hash does not match recorded provenance")
+
             pages = extract_document(str(source_path))
+            if len(pages) != record.page_count:
+                raise ValueError("Source PDF page count does not match recorded metadata")
+
             questions = reconstruct_question_candidates(pages)
             ready = running.model_copy(
                 update={
@@ -132,7 +139,15 @@ class KnowledgeService:
             raise
 
     def resume_pending(self) -> list[DocumentRecord]:
-        return [self.process_document(job.id) for job in self.store.pending_jobs()]
+        results: list[DocumentRecord] = []
+        for job in self.store.pending_jobs():
+            try:
+                results.append(self.process_document(job.id))
+            except Exception:
+                failed = self.store.get_document(job.document_id)
+                if failed is not None:
+                    results.append(failed)
+        return results
 
     def extract_questions(self, document_id: str) -> list[QuestionCandidate]:
         document = self.store.get_document(document_id)
@@ -143,7 +158,14 @@ class KnowledgeService:
         if not source_path.is_file():
             raise FileNotFoundError(document_id)
 
+        actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        if actual_hash != document.sha256:
+            raise ValueError("Source PDF hash does not match recorded provenance")
+
         pages = extract_document(str(source_path))
+        if len(pages) != document.page_count:
+            raise ValueError("Source PDF page count does not match recorded metadata")
+
         extracted = reconstruct_question_candidates(pages)
 
         return [
