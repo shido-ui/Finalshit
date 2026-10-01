@@ -121,3 +121,22 @@ def test_library_items_round_trip_and_sort(tmp_path):
         )
     )
     assert [item.id for item in store.get_library_items()] == ["lib-b", "lib-a"]
+
+
+def test_submission_accepts_option_label_when_ground_truth_is_option_text(tmp_path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = PracticeService(store)
+    question = make_question("q1", "one")
+    store.save_document(
+        __import__("app.knowledge.models", fromlist=["DocumentRecord"]).DocumentRecord(
+            id="doc",
+            filename="practice.pdf",
+            sha256="hash",
+            page_count=1,
+            status=__import__("app.knowledge.models", fromlist=["ProcessingStatus"]).ProcessingStatus.READY,
+        )
+    )
+    store.replace_questions("doc", [question])
+    session, _ = service.create_session([question], "fast", 1, seed=0)
+    result = service.submit(session.id, {"q1": "A"})
+    assert result.correct == 1
