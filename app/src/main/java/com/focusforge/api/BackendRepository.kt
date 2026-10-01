@@ -30,12 +30,22 @@ class BackendRepository(context: Context) {
         documentId, pinned, archived, fastModeEnabled
     )
 
+    suspend fun getQuestionAssets(questionId: String): List<QuestionAsset> = api.getQuestionAssets(questionId)
+
+    suspend fun getAssetBytes(assetId: String): ByteArray = api.getAssetBytes(assetId)
+
+    suspend fun getQuestionSolution(questionId: String): QuestionSolution = api.getQuestionSolution(questionId)
+
+    suspend fun generateQuestionSolution(questionId: String): QuestionSolution = api.generateQuestionSolution(questionId)
+
     suspend fun startPractice(
         mode: String = "fast",
         limit: Int = 10,
         documentId: String? = null,
         taxonomyNodeId: String? = null
     ): PracticeStart = api.startPractice(mode, limit, documentId, taxonomyNodeId)
+
+    suspend fun getPracticeSession(sessionId: String): PracticeStart = api.getPracticeSession(sessionId)
 
     suspend fun submitPractice(
         sessionId: String,

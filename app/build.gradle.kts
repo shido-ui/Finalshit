@@ -13,8 +13,8 @@ android {
         applicationId = "com.focusforge"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.environmentVariable("FOCUSFORGE_VERSION_CODE").map { it.toInt() }.orElse(1).get()
+        versionName = providers.environmentVariable("FOCUSFORGE_VERSION_NAME").orElse("0.1.0").get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
 
@@ -26,10 +26,28 @@ android {
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendUrl\"")
     }
 
+    signingConfigs {
+        create("releaseEnv") {
+            val storeFilePath = providers.environmentVariable("FOCUSFORGE_KEYSTORE").orNull
+            val storePasswordValue = providers.environmentVariable("FOCUSFORGE_KEYSTORE_PASSWORD").orNull
+            val keyAliasValue = providers.environmentVariable("FOCUSFORGE_KEY_ALIAS").orNull
+            val keyPasswordValue = providers.environmentVariable("FOCUSFORGE_KEY_PASSWORD").orNull
+            if (storeFilePath != null && storePasswordValue != null &&
+                keyAliasValue != null && keyPasswordValue != null
+            ) {
+                storeFile = file(storeFilePath)
+                storePassword = storePasswordValue
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("releaseEnv")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
