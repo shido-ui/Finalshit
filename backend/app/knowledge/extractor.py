@@ -8,9 +8,19 @@ import pymupdf
 
 
 QUESTION_START = re.compile(
-    r"(?m)^\s*(?:Q(?:uestion)?\s*)?(\d{1,4})\s*[.)\-:]\s+"
+    r"^\s*(?:Q(?:uestion)?\s*)?(\d{1,4})\s*[.)\-:]\s+",
+    re.IGNORECASE,
 )
-OPTION_LINE = re.compile(r"(?m)^\s*[(\[]?[A-Da-d][)\].:]\s+")
+QUESTION_WORD_START = re.compile(
+    r"^\s*Q(?:uestion)?\s*\d{1,4}\s*[.)\-:]\s+",
+    re.IGNORECASE,
+)
+OPTION_LINE = re.compile(r"^\s*[(\[]?[A-Da-d][)\].:]\s+")
+NUMBERED_OPTION_LINE = re.compile(r"^\s*[(\[]?([1-4])[)\].:]\s+")
+HEADER_FOOTER_LINE = re.compile(
+    r"^\s*(?:page\s*)?\d{1,4}\s*$|^\s*section\s+[A-Z0-9IVX]+\s*$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -82,7 +92,10 @@ def extract_document_assets(path: str) -> list[ExtractedAsset]:
                 try:
                     extracted = document.extract_image(xref)
                     rects = page.get_image_rects(xref)
-                    bbox = tuple(float(v) for v in (rects[0] if rects else (0, 0, 0, 0)))
+                    bbox = tuple(
+                        float(v)
+                        for v in (rects[0] if rects else (0, 0, 0, 0))
+                    )
                 except Exception:
                     continue
                 data = extracted.get("image", b"")
@@ -112,6 +125,39 @@ def asset_id(document_id: str, item: ExtractedAsset) -> str:
     return f"{document_id}-p{item.page_number}-a{item.asset_index}-{digest}"
 
 
+def _is_numbered_option(line: str, current_text: list[str]) -> bool:
+    match = NUMBERED_OPTION_LINE.match(line)
+    if not match:
+        return False
+
+    # JEE-style numbered choices (1)-(4) belong to the current stem. Once a
+    # question has already accumulated option markers, never reinterpret them
+    # as a new question. A bare numeric question such as "2) ..." is still
+    # allowed to start a question when no option context exists.
+    if any(OPTION_LINE.match(item) or NUMBERED_OPTION_LINE.match(item) for item in current_text):
+        return True
+    if len(current_text) >= 2 and "?" in " ".join(current_text):
+        return True
+    return False
+
+
+def _is_question_start(line: str, current_text: list[str]) -> re.Match[str] | None:
+    match = QUESTION_START.match(line)
+    if not match:
+        return None
+    if _is_numbered_option(line, current_text):
+        return None
+    return match
+
+
+def _clean_page_lines(text: str) -> list[str]:
+    return [
+        line
+        for line in (raw.strip() for raw in text.splitlines())
+        if line and not HEADER_FOOTER_LINE.fullmatch(line)
+    ]
+
+
 def reconstruct_question_candidates(
     pages: list[PageExtraction],
 ) -> list[ExtractedQuestion]:
@@ -139,9 +185,8 @@ def reconstruct_question_candidates(
         last_content_page = None
 
     for page in pages:
-        lines = [line.strip() for line in page.text.splitlines() if line.strip()]
-        for line in lines:
-            match = QUESTION_START.match(line)
+        for line in _clean_page_lines(page.text):
+            match = _is_question_start(line, current_lines)
             if match:
                 if current_start is not None:
                     flush(last_content_page)
@@ -156,11 +201,12 @@ def reconstruct_question_candidates(
     if current_start is not None:
         flush(last_content_page)
 
+    # Do not require an A-D option or '?' marker: numerical/integer questions
+    # are valid JEE questions and must remain in the bank.
     return [
         candidate
         for candidate in candidates
         if len(candidate.text) >= 12
-        and (OPTION_LINE.search(candidate.text) or "?" in candidate.text)
     ]
 
 
@@ -187,7 +233,7 @@ def extract_content_blocks(path: str) -> list[ExtractedContentBlock]:
                     first_line = text
                     if QUESTION_START.match(first_line):
                         kind = "question"
-                    elif OPTION_LINE.match(first_line):
+                    elif OPTION_LINE.match(first_line) or NUMBERED_OPTION_LINE.match(first_line):
                         kind = "option"
                     elif re.fullmatch(
                         r"(?:Figure|Fig\.?|Diagram|Table)\s*\d*.*",
