@@ -18,7 +18,7 @@ class FocusForgeApi(
     private val timeoutMs: Int = 20_000
 ) {
     suspend fun health(): BackendHealth = withContext(Dispatchers.IO) {
-        val json = request("GET", "/health")
+        val json = JSONObject(request("GET", "/health"))
         BackendHealth(json.getString("status"), json.getString("service"))
     }
 
@@ -28,12 +28,12 @@ class FocusForgeApi(
                 ?: throw IOException("Unable to read selected PDF")
             if (bytes.isEmpty()) throw IOException("Selected PDF is empty")
             val encoded = URLEncoder.encode(filename, Charsets.UTF_8.name())
-            val json = request(
+            val json = JSONObject(request(
                 method = "POST",
                 path = "/api/v1/knowledge/documents?filename=$encoded",
                 body = bytes,
                 contentType = "application/pdf"
-            )
+            ))
             parseDocument(json)
         }
 
@@ -44,9 +44,7 @@ class FocusForgeApi(
 
     suspend fun getLibrary(includeArchived: Boolean = false): List<BackendLibraryItem> =
         withContext(Dispatchers.IO) {
-            val array = JSONArray(
-                request("GET", "/api/v1/library?include_archived=$includeArchived").toString()
-            )
+            val array = JSONArray(request("GET", "/api/v1/library?include_archived=$includeArchived"))
             buildList(array.length()) {
                 for (index in 0 until array.length()) {
                     val item = array.getJSONObject(index)
@@ -76,7 +74,7 @@ class FocusForgeApi(
         }.joinToString("&")
         val path = "/api/v1/library/${encode(documentId)}" +
             if (params.isEmpty()) "" else "?$params"
-        val item = request("PATCH", path)
+        val item = JSONObject(request("PATCH", path))
         BackendLibraryItem(
             documentId = item.getString("document_id"),
             title = item.getString("title"),
@@ -91,7 +89,7 @@ class FocusForgeApi(
         path: String,
         body: ByteArray? = null,
         contentType: String? = null
-    ): JSONObject {
+    ): String {
         val connection = (URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection)
         connection.requestMethod = method
         connection.connectTimeout = timeoutMs
@@ -116,7 +114,7 @@ class FocusForgeApi(
                     if (!detail.isNullOrBlank()) ": $detail" else ""
             )
         }
-        return JSONObject(response)
+        return response
     }
 
     private fun parseDocument(json: JSONObject): BackendDocument =
