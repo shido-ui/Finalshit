@@ -64,10 +64,10 @@ def test_ai_result_must_reference_existing_taxonomy():
                 evidence="invented",
             )
         ),
-        fallback=KeywordTaxonomyClassifier({"physics": ("force",)}),
+        fallback=KeywordTaxonomyClassifier({"physics": ("force", "velocity")}),
     )
 
-    result = classifier.classify(question("A force acts on the body."), taxonomy())
+    result = classifier.classify(question("A force changes the velocity of the body."), taxonomy())
 
     assert result.taxonomy_node_id == "physics"
     assert result.quarantined is False
