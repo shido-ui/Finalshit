@@ -2,14 +2,22 @@ package com.focusforge.api
 
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.delay
 
 class BackendRepository(context: Context) {
     private val api = FocusForgeApi(context)
 
     suspend fun checkHealth(): BackendHealth = api.health()
 
-    suspend fun importPdf(uri: Uri, filename: String): BackendDocument =
-        api.ingestPdf(uri, filename)
+    suspend fun importPdf(uri: Uri, filename: String): BackendDocument {
+        var document = api.ingestPdf(uri, filename)
+        repeat(300) {
+            if (document.status == "ready" || document.status == "failed") return document
+            delay(1000)
+            document = api.getDocument(document.id)
+        }
+        return document
+    }
 
     suspend fun syncLibrary(): List<BackendLibraryItem> = api.getLibrary()
 
