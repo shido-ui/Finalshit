@@ -139,16 +139,17 @@ class MainActivity : ComponentActivity() {
                     runCatching {
                         backendHealth = backendRepository.checkHealth()
                         backendRepository.syncLibrary().forEach { item ->
+                            val existing = libraryRepository.findByDocument(item.documentId)
                             libraryRepository.upsert(
                                 LibraryItem(
-                                    id = "library-${item.documentId}",
+                                    id = existing?.id ?: "library-${item.documentId}",
                                     documentId = item.documentId,
                                     title = item.title,
                                     pinned = item.pinned,
                                     archived = item.archived,
                                     fastModeEnabled = item.fastModeEnabled,
-                                    createdAt = System.currentTimeMillis(),
-                                    updatedAt = System.currentTimeMillis()
+                                    createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+                                    updatedAt = existing?.updatedAt ?: System.currentTimeMillis()
                                 )
                             )
                         }
