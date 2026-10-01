@@ -29,6 +29,7 @@ class PracticeQuestion(BaseModel):
     difficulty: str | None = None
     has_diagram: bool = False
     has_table: bool = False
+    asset_ids: list[str] = Field(default_factory=list)
 
 
 class PracticeSession(BaseModel):
@@ -157,10 +158,36 @@ class PracticeService:
                 difficulty=question.difficulty,
                 has_diagram=question.has_diagram,
                 has_table=question.has_table,
+                asset_ids=question.asset_ids,
             )
             for index, question in enumerate(selected, start=1)
         ]
         return session, public
+
+    def resume_session(self, session_id: str) -> tuple[PracticeSession, list[PracticeQuestion]]:
+        session = self.store.get_practice_session(session_id)
+        if session is None:
+            raise KeyError(session_id)
+        questions: list[PracticeQuestion] = []
+        for position, question_id in enumerate(session.question_ids, start=1):
+            question = self.store.get_question(question_id)
+            if question is None:
+                continue
+            questions.append(
+                PracticeQuestion(
+                    id=question.id,
+                    position=position,
+                    text=question.text,
+                    options=question.options,
+                    taxonomy_node_id=question.taxonomy_node_id,
+                    difficulty=question.difficulty,
+                    has_diagram=question.has_diagram,
+                    has_table=question.has_table,
+                    asset_ids=question.asset_ids,
+                )
+            )
+        return session, questions
+
 
     def submit(
         self,
