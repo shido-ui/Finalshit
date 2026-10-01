@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 import pymupdf
 
 
 QUESTION_START = re.compile(
-    r"(?m)^\s*(?:Q(?:uestion)?\s*)?(\d{1,4})\s*[.)\-:]\s+"
+    r"(?m)^\\s*(?:Q(?:uestion)?\\s*)?(\\d{1,4})\\s*[.)\\-:]\\s+"
 )
-OPTION_LINE = re.compile(r"(?m)^\s*[(\[]?[A-Da-d][)\].:]\s+")
+OPTION_LINE = re.compile(r"(?m)^\\s*[(\\[]?[A-Da-d][)\\].:]\\s+")
 
 
 @dataclass(frozen=True)
@@ -18,6 +20,18 @@ class PageExtraction:
     text: str
     image_count: int
     block_count: int
+
+
+@dataclass(frozen=True)
+class ExtractedAsset:
+    page_number: int
+    asset_index: int
+    xref: int
+    mime_type: str
+    extension: str
+    data: bytes
+    width: int
+    height: int
 
 
 @dataclass(frozen=True)
@@ -45,6 +59,47 @@ def extract_document(path: str) -> list[PageExtraction]:
     return pages
 
 
+def extract_document_assets(path: str) -> list[ExtractedAsset]:
+    assets: list[ExtractedAsset] = []
+    with pymupdf.open(path) as document:
+        for page_number, page in enumerate(document, start=1):
+            seen_xrefs: set[int] = set()
+            asset_index = 0
+            for image in page.get_images(full=True):
+                xref = int(image[0])
+                if xref <= 0 or xref in seen_xrefs:
+                    continue
+                seen_xrefs.add(xref)
+                try:
+                    extracted = document.extract_image(xref)
+                except Exception:
+                    continue
+                data = extracted.get("image", b"")
+                if not data:
+                    continue
+                asset_index += 1
+                mime_type = str(extracted.get("ext", "bin")).lower()
+                extension = mime_type if mime_type != "jpeg" else "jpg"
+                assets.append(
+                    ExtractedAsset(
+                        page_number=page_number,
+                        asset_index=asset_index,
+                        xref=xref,
+                        mime_type=f"image/{mime_type}" if "/" not in mime_type else mime_type,
+                        extension=extension,
+                        data=data,
+                        width=int(extracted.get("width", 0) or 0),
+                        height=int(extracted.get("height", 0) or 0),
+                    )
+                )
+    return assets
+
+
+def asset_id(document_id: str, item: ExtractedAsset) -> str:
+    digest = hashlib.sha256(item.data).hexdigest()[:20]
+    return f"{document_id}-p{item.page_number}-a{item.asset_index}-{digest}"
+
+
 def reconstruct_question_candidates(
     pages: list[PageExtraction],
 ) -> list[ExtractedQuestion]:
@@ -55,7 +110,7 @@ def reconstruct_question_candidates(
 
     def flush(end_page: int) -> None:
         nonlocal current_number, current_start, current_lines
-        text = "\n".join(current_lines).strip()
+        text = "\\n".join(current_lines).strip()
         if current_start is not None and text:
             candidates.append(
                 ExtractedQuestion(
