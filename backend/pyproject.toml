@@ -8,6 +8,7 @@ dependencies = [
     "pydantic>=2.10,<3.0",
     "pymupdf>=1.25,<2.0",
     "sympy>=1.13,<2.0",
+    "python-dotenv>=1.0,<2.0",
 ]
 [dependency-groups]
 dev = ["pytest>=8.3,<9.0", "httpx>=0.28,<1.0", "ruff>=0.9,<1.0"]
