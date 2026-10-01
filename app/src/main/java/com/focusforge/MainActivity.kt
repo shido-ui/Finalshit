@@ -11,8 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -25,7 +28,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.focusforge.enforcement.FocusEnforcementController
 import com.focusforge.focus.FocusState
+import com.focusforge.launcher.AppCatalog
+import com.focusforge.launcher.LaunchableApp
 import com.focusforge.ui.FocusForgeViewModel
 import com.focusforge.usage.UsageAccess
 import com.focusforge.usage.openUsageAccessSettings
@@ -34,6 +40,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val manager = (application as FocusForgeApplication).sessionManager
+        val catalog = AppCatalog(this)
+        val enforcement = FocusEnforcementController(this)
 
         setContent {
             MaterialTheme {
@@ -42,7 +50,12 @@ class MainActivity : ComponentActivity() {
                 )
                 val focusState by viewModel.focusState.collectAsState()
                 var selectedMinutes by remember { mutableStateOf(25) }
-                val usageGranted = remember { mutableStateOf(UsageAccess.isGranted(this@MainActivity)) }
+                var usageGranted by remember { mutableStateOf(UsageAccess.isGranted(this@MainActivity)) }
+                val apps = remember { catalog.installedLaunchableApps() }
+                var allowedPackages by remember {
+                    mutableStateOf(setOf(packageName))
+                }
+                val enforcementStatus = remember { enforcement.status() }
 
                 Surface(Modifier.fillMaxSize()) {
                     Column(
@@ -72,14 +85,60 @@ class MainActivity : ComponentActivity() {
                                 Spacer(Modifier.height(2.dp))
                                 if (focusState == FocusState.IDLE) {
                                     Button(
-                                        onClick = { viewModel.startFocus(selectedMinutes) },
+                                        onClick = {
+                                            if (enforcementStatus.deviceOwner) {
+                                                enforcement.startLockTask(this@MainActivity, allowedPackages)
+                                            }
+                                            viewModel.startFocus(selectedMinutes)
+                                        },
                                         Modifier.fillMaxWidth()
                                     ) { Text("Start focus") }
                                 } else {
                                     Button(
-                                        onClick = viewModel::cancelFocus,
+                                        onClick = {
+                                            if (enforcementStatus.deviceOwner) {
+                                                enforcement.stopLockTask(this@MainActivity)
+                                            }
+                                            viewModel.cancelFocus()
+                                        },
                                         Modifier.fillMaxWidth()
                                     ) { Text("End focus") }
+                                }
+                                Text(
+                                    if (enforcementStatus.deviceOwner) {
+                                        "Dedicated-device enforcement available."
+                                    } else {
+                                        "Standard mode records the session; app blocking requires supported device-owner provisioning."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Allowed apps", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Select apps that may remain available during a device-owner lock-task session.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxWidth().height(220.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    items(apps, key = { it.packageName }) { app ->
+                                        AppRow(
+                                            app = app,
+                                            checked = allowedPackages.contains(app.packageName),
+                                            onCheckedChange = { checked ->
+                                                allowedPackages = if (checked) {
+                                                    allowedPackages + app.packageName
+                                                } else {
+                                                    allowedPackages - app.packageName
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -88,31 +147,47 @@ class MainActivity : ComponentActivity() {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Usage access", style = MaterialTheme.typography.titleMedium)
                                 Text(
-                                    if (usageGranted.value) {
+                                    if (usageGranted) {
                                         "Granted — FocusForge can read app usage for analytics."
                                     } else {
                                         "Not granted — app-usage analytics are unavailable."
                                     }
                                 )
-                                if (!usageGranted.value) {
-                                    OutlinedButton(onClick = {
-                                        openUsageAccessSettings()
-                                    }) { Text("Open usage access settings") }
+                                if (!usageGranted) {
+                                    OutlinedButton(onClick = { openUsageAccessSettings() }) {
+                                        Text("Open usage access settings")
+                                    }
                                 } else {
                                     OutlinedButton(onClick = {
-                                        usageGranted.value = UsageAccess.isGranted(this@MainActivity)
-                                    }) { Text("Refresh permission") }
+                                        usageGranted = UsageAccess.isGranted(this@MainActivity)
+                                    }) {
+                                        Text("Refresh permission")
+                                    }
                                 }
                             }
                         }
-
-                        Text(
-                            "FocusForge currently records sessions and usage. It does not pretend to block apps without an Android mechanism that can actually enforce it.",
-                            style = MaterialTheme.typography.bodySmall
-                        )
                     }
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun AppRow(
+    app: LaunchableApp,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(app.label, modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
