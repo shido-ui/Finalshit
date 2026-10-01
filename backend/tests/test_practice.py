@@ -140,3 +140,42 @@ def test_submission_accepts_option_label_when_ground_truth_is_option_text(tmp_pa
     session, _ = service.create_session([question], "fast", 1, seed=0)
     result = service.submit(session.id, {"q1": "A"})
     assert result.correct == 1
+
+
+def test_unscorable_questions_are_excluded_from_practice():
+    from tempfile import TemporaryDirectory
+
+    with TemporaryDirectory() as directory:
+        store = KnowledgeStore(f"{directory}/knowledge.db")
+        service = PracticeService(store)
+        questions = [
+            make_question("scorable", "A"),
+            make_question("unknown", "").model_copy(update={"answer": None}),
+        ]
+
+        session, public = service.create_session(questions, "fast", 10, seed=0)
+
+        assert session.question_ids == ["scorable"]
+        assert [item.id for item in public] == ["scorable"]
+
+
+def test_numeric_answers_accept_equivalent_decimal_forms(tmp_path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = PracticeService(store)
+    question = make_question("q1", "4.0")
+    store.save_document(
+        DocumentRecord(
+            id="doc",
+            filename="practice.pdf",
+            sha256="hash",
+            page_count=1,
+            status=ProcessingStatus.READY,
+        )
+    )
+    store.replace_questions("doc", [question])
+    session, _ = service.create_session([question], "fast", 1, seed=0)
+
+    result = service.submit(session.id, {"q1": "4.00"})
+
+    assert result.correct == 1
+    assert result.question_results == {"q1": True}
