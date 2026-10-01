@@ -29,19 +29,36 @@ class FocusEnforcementController(context: Context) {
         if (!devicePolicyManager.isDeviceOwnerApp(appContext.packageName)) return false
 
         val packages = (allowedPackages + appContext.packageName).toTypedArray()
-        devicePolicyManager.setLockTaskPackages(adminComponent, packages)
-        return true
+        return try {
+            devicePolicyManager.setLockTaskPackages(adminComponent, packages)
+            true
+        } catch (_: SecurityException) {
+            false
+        } catch (_: IllegalArgumentException) {
+            false
+        }
     }
 
     fun startLockTask(activity: Activity, allowedPackages: Set<String>): Boolean {
         if (!configureAllowedPackages(allowedPackages)) return false
-        activity.startLockTask()
-        return true
+        return try {
+            activity.startLockTask()
+            true
+        } catch (_: SecurityException) {
+            false
+        } catch (_: IllegalStateException) {
+            false
+        }
     }
 
     fun stopLockTask(activity: Activity) {
-        if (devicePolicyManager.isLockTaskPermitted(appContext.packageName)) {
+        if (!devicePolicyManager.isDeviceOwnerApp(appContext.packageName)) return
+        try {
             activity.stopLockTask()
+        } catch (_: SecurityException) {
+            // The focus session can still be cancelled if enforcement is no longer active.
+        } catch (_: IllegalStateException) {
+            // Activity may already have left lock-task mode.
         }
     }
 }
