@@ -19,9 +19,14 @@ class FocusEnforcementController(context: Context) {
 
     fun status(): EnforcementStatus {
         val owner = devicePolicyManager.isDeviceOwnerApp(appContext.packageName)
+        val permitted = try {
+            devicePolicyManager.isLockTaskPermitted(appContext.packageName)
+        } catch (_: SecurityException) {
+            false
+        }
         return EnforcementStatus(
             deviceOwner = owner,
-            lockTaskSupported = owner
+            lockTaskSupported = owner && permitted
         )
     }
 
@@ -40,7 +45,9 @@ class FocusEnforcementController(context: Context) {
     }
 
     fun startLockTask(activity: Activity, allowedPackages: Set<String>): Boolean {
+        if (!devicePolicyManager.isDeviceOwnerApp(appContext.packageName)) return false
         if (!configureAllowedPackages(allowedPackages)) return false
+        if (!status().lockTaskSupported) return false
         return try {
             activity.startLockTask()
             true
