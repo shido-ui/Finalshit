@@ -26,7 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.focusforge.api.BackendLibraryItem
+import com.focusforge.data.LibraryItem
 import com.focusforge.api.BackendRepository
 import com.focusforge.api.PracticeQuestion
 import com.focusforge.api.PracticeResult
@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun PracticeCard(
     repository: BackendRepository,
-    libraryItems: List<BackendLibraryItem>,
+    libraryItems: List<LibraryItem>,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
