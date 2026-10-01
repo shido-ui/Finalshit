@@ -166,7 +166,7 @@ def test_store_round_trips_solution(tmp_path):
     q = question().model_copy(
         update={
             "provenance": [
-                {"document_id": "doc", "page_number": 1, "source_hash": "hash", "extractor": "test"}
+                Provenance(document_id="doc", page_number=1, source_hash="hash", extractor="test")
             ]
         }
     )
