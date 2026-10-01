@@ -65,18 +65,17 @@ class PracticeService:
         questions: list[QuestionCandidate],
         limit: int,
         seed: int | None,
+        mode: str,
     ) -> list[QuestionCandidate]:
         eligible = [
             question for question in questions
             if question.classification_status is not ClassificationStatus.QUARANTINED
         ]
-        if self._selection_mode == PracticeMode.ADAPTIVE:
+        if mode == PracticeMode.ADAPTIVE:
             return self.intelligence.adaptive_rank(eligible)[:limit]
         rng = random.Random(seed)
         rng.shuffle(eligible)
         return eligible[:limit]
-
-    _selection_mode = PracticeMode.FAST
 
     def create_session(
         self,
@@ -87,11 +86,10 @@ class PracticeService:
     ) -> tuple[PracticeSession, list[PracticeQuestion]]:
         if mode not in {PracticeMode.FAST, PracticeMode.TEST, PracticeMode.ADAPTIVE}:
             raise ValueError("Unsupported practice mode")
-        self._selection_mode = mode
         if limit < 1 or limit > 100:
             raise ValueError("Practice limit must be between 1 and 100")
 
-        selected = self._select(questions, limit, seed)
+        selected = self._select(questions, limit, seed, mode)
         if not selected:
             raise ValueError("No eligible questions are available")
 
