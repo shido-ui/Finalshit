@@ -46,6 +46,7 @@ import com.focusforge.launcher.AppCatalog
 import com.focusforge.launcher.LaunchableApp
 import com.focusforge.ui.FocusForgeViewModel
 import com.focusforge.ui.IntelligenceCard
+import com.focusforge.ui.CopilotCard
 import com.focusforge.ui.PracticeCard
 import com.focusforge.usage.UsageAccess
 import com.focusforge.usage.openUsageAccessSettings
@@ -305,6 +306,11 @@ class MainActivity : ComponentActivity() {
                         IntelligenceCard(
                             repository = backendRepository,
                             onStartAdaptive = { adaptiveLaunchToken += 1 }
+                        )
+
+                        CopilotCard(
+                            repository = backendRepository,
+                            libraryItems = libraryItems
                         )
 
                         PracticeCard(
