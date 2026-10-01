@@ -116,10 +116,6 @@ class KnowledgeService:
     ) -> list[QuestionCandidate]:
         extracted = reconstruct_question_candidates(pages)
         questions: list[QuestionCandidate] = []
-        assets_by_page: dict[int, list[str]] = {}
-        for asset in assets:
-            assets_by_page.setdefault(asset.page_number, []).append(asset.id)
-
         for index, item in enumerate(extracted):
             question = QuestionCandidate(
                 id=f"{document.id}-{index + 1}",
