@@ -52,6 +52,7 @@ import com.focusforge.ui.FocusForgeViewModel
 import com.focusforge.ui.IntelligenceCard
 import com.focusforge.ui.PracticeCard
 import com.focusforge.usage.UsageAccess
+import com.focusforge.usage.UsageStatsReader
 import com.focusforge.usage.openUsageAccessSettings
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -76,6 +77,7 @@ class MainActivity : ComponentActivity() {
                 val focusState by viewModel.focusState.collectAsState()
                 var selectedMinutes by remember { mutableStateOf(25) }
                 var usageGranted by remember { mutableStateOf(UsageAccess.isGranted(this@MainActivity)) }
+                var usageStats by remember { mutableStateOf(emptyList<com.focusforge.usage.AppUsage>()) }
                 var enforcementError by remember { mutableStateOf<String?>(null) }
                 var backendHealth by remember { mutableStateOf<BackendHealth?>(null) }
                 var backendError by remember { mutableStateOf<String?>(null) }
@@ -398,18 +400,28 @@ class MainActivity : ComponentActivity() {
                                         }
                                     )
                                     if (!usageGranted) {
-                                        OutlinedButton(onClick = { openUsageAccessSettings() }) {
-                                            Text("Open usage access settings")
-                                        }
-                                    } else {
-                                        OutlinedButton(
-                                            onClick = {
-                                                usageGranted = UsageAccess.isGranted(this@MainActivity)
-                                            }
-                                        ) {
-                                            Text("Refresh permission")
-                                        }
+                                    OutlinedButton(onClick = { openUsageAccessSettings() }) {
+                                        Text("Open usage access settings")
                                     }
+                                } else {
+                                    OutlinedButton(
+                                        onClick = {
+                                            usageGranted = UsageAccess.isGranted(this@MainActivity)
+                                            if (usageGranted) {
+                                                usageStats = UsageStatsReader(this@MainActivity).todayUsage()
+                                            }
+                                        }
+                                    ) {
+                                        Text("Refresh usage")
+                                    }
+                                    usageStats.take(5).forEach { usage ->
+                                        Text(
+                                            usage.packageName + " • " +
+                                                (usage.totalTimeMs / 60_000L) + " min",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
                                 }
                             }
                         }
