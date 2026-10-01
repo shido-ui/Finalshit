@@ -16,6 +16,7 @@ from .extractor import (
 )
 from .question_intelligence import HybridQuestionIntelligence
 from .solution_engine import SolutionEngine
+from .copilot import CopilotCandidate, StudyCopilot
 from .models import (
     ClassificationStatus,
     DocumentAsset,
@@ -201,6 +202,35 @@ class KnowledgeService:
                 )
             )
         return questions
+
+    def get_source_pages(self, document_id: str, page_start: int, page_end: int) -> dict[int, str]:
+        record = self.store.get_document(document_id)
+        if record is None:
+            raise KeyError(document_id)
+        if page_start < 1 or page_end < page_start or page_end > record.page_count:
+            raise ValueError("Invalid source page range")
+        source_path = self.storage_dir / f"{document_id}.pdf"
+        if not source_path.is_file():
+            raise FileNotFoundError(source_path)
+        actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        if actual_hash != record.sha256:
+            raise ValueError("Source PDF hash does not match recorded provenance")
+        with pymupdf.open(source_path) as document:
+            return {
+                page_number: document[page_number - 1].get_text("text", sort=True)
+                for page_number in range(page_start, page_end + 1)
+            }
+
+    def answer_copilot(
+        self,
+        document_id: str,
+        question: str,
+        page_start: int,
+        page_end: int,
+        copilot: StudyCopilot,
+    ) -> CopilotCandidate:
+        source_pages = self.get_source_pages(document_id, page_start, page_end)
+        return copilot.answer(question, source_pages)
 
     def process_document(self, job_id: str) -> DocumentRecord:
         job = self.store.get_job(job_id)
