@@ -72,3 +72,23 @@ def test_numbered_options_do_not_start_new_questions():
     assert questions[0].number == "1"
     assert "2) 5" in questions[0].text
     assert questions[1].number == "2"
+
+
+def test_answer_key_extraction_maps_numbered_choices_and_numerical_answers():
+    from app.knowledge.service import KnowledgeService
+
+    pages = [
+        PageExtraction(
+            page_number=9,
+            text="ANSWER KEY\n1. B\n2 - 3.14\n3: 7\n4 A",
+            image_count=0,
+            block_count=1,
+        )
+    ]
+
+    answers = KnowledgeService._extract_answer_key(pages)
+
+    assert answers["1"] == "B"
+    assert answers["2"] == "3.14"
+    assert answers["3"] == "7"
+    assert answers["4"] == "A"

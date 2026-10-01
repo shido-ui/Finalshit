@@ -513,6 +513,44 @@ class KnowledgeStore:
             )
 
 
+    def save_question(self, question: QuestionCandidate) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO questions (
+                    id, document_id, page_start, page_end, text, number,
+                    options_json, answer, solution, has_diagram, has_table,
+                    exam, exam_year, difficulty, intelligence_confidence,
+                    intelligence_reason, intelligence_provider,
+                    taxonomy_node_id, classification_status, classification_confidence,
+                    classification_reason, provenance_json, asset_ids_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    answer=excluded.answer,
+                    solution=excluded.solution,
+                    options_json=excluded.options_json,
+                    taxonomy_node_id=excluded.taxonomy_node_id,
+                    classification_status=excluded.classification_status,
+                    classification_confidence=excluded.classification_confidence,
+                    classification_reason=excluded.classification_reason
+                """,
+                (
+                    question.id, question.document_id, question.page_start, question.page_end,
+                    question.text, question.number,
+                    json.dumps(question.options, ensure_ascii=False, separators=(",", ":")),
+                    question.answer, question.solution, int(question.has_diagram), int(question.has_table),
+                    question.exam, question.exam_year, question.difficulty,
+                    question.intelligence_confidence, question.intelligence_reason,
+                    question.intelligence_provider, question.taxonomy_node_id,
+                    question.classification_status.value, question.classification_confidence,
+                    question.classification_reason,
+                    json.dumps([item.model_dump(mode="json") for item in question.provenance], separators=(",", ":")),
+                    json.dumps(question.asset_ids, separators=(",", ":")),
+                ),
+            )
+
+
     def get_question(self, question_id: str) -> QuestionCandidate | None:
         with self._connect() as connection:
             row = connection.execute(

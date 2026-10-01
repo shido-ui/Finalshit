@@ -23,7 +23,7 @@ class GeminiStudyCopilotProvider:
     name = "gemini-study-copilot-v1"
 
     def __init__(self, model: str | None = None, timeout_seconds: int = 30) -> None:
-        self.model = model or os.getenv("GEMINI_COPILOT_MODEL", "gemini-3.8-flash")
+        self.model = model or os.getenv("GEMINI_COPILOT_MODEL", os.getenv("GEMINI_MODEL", "gemini-3-flash"))
         self.timeout_seconds = timeout_seconds
 
     def answer(self, question: str, source_pages: dict[int, str]) -> CopilotCandidate:

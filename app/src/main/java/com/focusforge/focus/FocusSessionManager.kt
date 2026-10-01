@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -20,6 +22,7 @@ class FocusSessionManager(
     private val nowMs: () -> Long = { System.currentTimeMillis() }
 ) {
     private val _state = MutableStateFlow(FocusState.IDLE)
+    private var expiryJob: Job? = null
     val state: StateFlow<FocusState> = _state.asStateFlow()
 
     suspend fun start(durationMs: Long): Boolean {
@@ -33,6 +36,7 @@ class FocusSessionManager(
         val armed = repository.createArmed(durationMs, nowMs())
         val locked = repository.transition(armed, FocusState.LOCKED, nowMs())
         _state.value = FocusState.LOCKED
+        scheduleExpiry(locked)
 
         val request = OneTimeWorkRequestBuilder<FocusMaintenanceWorker>()
             .setInitialDelay(locked.plannedDurationMs, TimeUnit.MILLISECONDS)
@@ -46,6 +50,7 @@ class FocusSessionManager(
     }
 
     fun cancel() {
+        expiryJob?.cancel()
         scope.launch {
             val active = repository.activeSession.first() ?: run {
                 _state.value = FocusState.IDLE
@@ -66,6 +71,7 @@ class FocusSessionManager(
     suspend fun recover() {
         val active = repository.activeSession.first()
         if (active == null) {
+            expiryJob?.cancel()
             _state.value = FocusState.IDLE
             return
         }
@@ -75,6 +81,21 @@ class FocusSessionManager(
             return
         }
         _state.value = current
+        if (current == FocusState.LOCKED) scheduleExpiry(active)
+    }
+
+    private fun scheduleExpiry(session: FocusSession) {
+        expiryJob?.cancel()
+        val start = session.startedAtEpochMs ?: return
+        val remaining = (start + session.plannedDurationMs - nowMs()).coerceAtLeast(0L)
+        expiryJob = scope.launch {
+            delay(remaining)
+            val active = repository.activeSession.first()
+            if (active != null && active.id == session.id) {
+                repository.recoverExpired(active, nowMs())
+                _state.value = FocusState.IDLE
+            }
+        }
     }
 
     private suspend fun recoverOrFinish(session: FocusSession) {

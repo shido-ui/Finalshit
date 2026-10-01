@@ -60,14 +60,21 @@ class FocusForgeApi(
         archived: Boolean? = null,
         fastModeEnabled: Boolean? = null
     ): BackendLibraryItem = withContext(Dispatchers.IO) {
-        val params = buildList {
-            pinned?.let { add("pinned=$it") }
-            archived?.let { add("archived=$it") }
-            fastModeEnabled?.let { add("fast_mode_enabled=$it") }
-        }.joinToString("&")
-        val path = "/api/v1/library/${encode(documentId)}" +
-            if (params.isEmpty()) "" else "?$params"
-        parseLibraryItem(JSONObject(request("PATCH", path)))
+        val body = JSONObject().apply {
+            pinned?.let { put("pinned", it) }
+            archived?.let { put("archived", it) }
+            fastModeEnabled?.let { put("fast_mode_enabled", it) }
+        }.toString().toByteArray(Charsets.UTF_8)
+        parseLibraryItem(
+            JSONObject(
+                request(
+                    "PATCH",
+                    "/api/v1/library/${encode(documentId)}",
+                    body = body,
+                    contentType = "application/json"
+                )
+            )
+        )
     }
 
     suspend fun startPractice(

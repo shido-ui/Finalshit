@@ -112,7 +112,7 @@ class GeminiTaxonomyProposalProvider:
         timeout_seconds: float = 30.0,
     ) -> None:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model = model or os.getenv("GEMINI_TAXONOMY_MODEL", "gemini-3-flash")
+        self.model = model or os.getenv("GEMINI_TAXONOMY_MODEL", os.getenv("GEMINI_MODEL", "gemini-3-flash"))
         self.timeout_seconds = timeout_seconds
 
     def propose(

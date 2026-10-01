@@ -4,6 +4,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -48,7 +49,7 @@ class GeminiQuestionClassificationProvider:
             object.__setattr__(
                 self,
                 "model",
-                os.getenv("GEMINI_QUESTION_CLASSIFICATION_MODEL", "gemini-3-flash"),
+                os.getenv("GEMINI_QUESTION_CLASSIFICATION_MODEL", os.getenv("GEMINI_MODEL", "gemini-3-flash")),
             )
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
@@ -100,20 +101,28 @@ class GeminiQuestionClassificationProvider:
             method="POST",
         )
 
-        try:
-            with urllib.request.urlopen(
-                request,
-                timeout=self.timeout_seconds,
-            ) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(
-                f"Gemini question classification request failed (HTTP {exc.code})"
-            ) from exc
-        except (urllib.error.URLError, TimeoutError) as exc:
-            raise RuntimeError("Gemini question classification request failed") from exc
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("Gemini returned invalid JSON") from exc
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(
+                    request,
+                    timeout=self.timeout_seconds,
+                ) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                if exc.code not in {408, 429, 500, 502, 503, 504} or attempt == 2:
+                    raise RuntimeError(
+                        f"Gemini question classification request failed (HTTP {exc.code})"
+                    ) from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_error = exc
+                if attempt == 2:
+                    raise RuntimeError("Gemini question classification request failed") from exc
+            time.sleep(0.5 * (2 ** attempt))
+        else:
+            raise RuntimeError("Gemini question classification request failed") from last_error
 
         try:
             text = body["candidates"][0]["content"]["parts"][0]["text"]

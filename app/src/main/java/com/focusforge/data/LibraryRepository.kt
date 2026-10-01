@@ -9,6 +9,8 @@ class LibraryRepository(
 
     suspend fun upsert(item: LibraryItem) = dao.upsert(item)
 
+    suspend fun findByDocument(documentId: String): LibraryItem? = dao.findByDocument(documentId)
+
     suspend fun setPinned(documentId: String, pinned: Boolean) =
         dao.setPinned(documentId, pinned, System.currentTimeMillis())
 
