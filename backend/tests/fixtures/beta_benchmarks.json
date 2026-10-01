@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "scope": "single_user_jee_beta",
+  "cases": [
+    {"id": "physics_cross_page_question", "subject": "Physics", "input_type": "synthetic_pdf", "required_capabilities": ["page_provenance", "cross_page_reconstruction", "question_detection"]},
+    {"id": "chemistry_visual_question", "subject": "Chemistry", "input_type": "synthetic_pdf", "required_capabilities": ["visual_asset_extraction", "geometry_provenance", "question_asset_association"]},
+    {"id": "mathematics_low_confidence", "subject": "Mathematics", "input_type": "synthetic_pdf", "required_capabilities": ["classification", "confidence_scoring", "quarantine"]}
+  ]
+}
