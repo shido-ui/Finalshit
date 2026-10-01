@@ -287,6 +287,15 @@ def set_question_answer(question_id: str, request: AnswerUpdateRequest) -> Quest
     return updated
 
 
+@app.get("/api/v1/practice/sessions/{session_id}", response_model=PracticeStartResponse)
+def get_practice_session(session_id: str) -> PracticeStartResponse:
+    try:
+        session, questions = practice_service.resume_session(session_id)
+        return PracticeStartResponse(session=session, questions=questions)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Practice session not found") from exc
+
+
 @app.post("/api/v1/practice/sessions/{session_id}/submit", response_model=PracticeResult)
 def submit_practice(session_id: str, request: PracticeSubmitRequest) -> PracticeResult:
     try:
