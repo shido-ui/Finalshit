@@ -122,13 +122,14 @@ class IntelligenceService:
                 else None
             )
             mastery_gap = 1.0 - (weakness.mastery if weakness else 0.0)
-            due_bonus = 2.0 if question.id in due_ids else 0.0
+            weakness_bonus = 1.5 if weakness is not None else 0.0
+            due_bonus = 3.0 if question.id in due_ids else 0.0
             difficulty_bonus = {
                 "hard": 0.20,
                 "medium": 0.10,
                 "easy": 0.0,
             }.get((question.difficulty or "").casefold(), 0.05)
-            score = due_bonus + (2.0 * mastery_gap) + difficulty_bonus
+            score = due_bonus + weakness_bonus + mastery_gap + difficulty_bonus
             ranked.append((score, question.id, question))
 
         ranked.sort(key=lambda item: (-item[0], item[1]))
