@@ -65,7 +65,7 @@ class TaxonomyProposalEngine:
                 parent_id = candidate.parent_id
                 if parent_id is not None:
                     if parent_id.startswith("new:"):
-                        parent_candidate_id = parent_id.removeprefix("new:")
+                        parent_candidate_id = parent_id
                         if parent_candidate_id not in candidate_ids:
                             continue
                         if f"{document_id}-{parent_candidate_id}" not in accepted_ids:
