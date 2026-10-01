@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.knowledge.models import (
     ClassificationStatus,
+    ContentBlock,
     DocumentAsset,
     DocumentRecord,
     QuestionCandidate,
@@ -74,6 +75,8 @@ def bootstrap() -> dict[str, object]:
             "visual-asset-extraction",
             "asset-persistence",
             "question-asset-association",
+            "rich-content-block-extraction",
+            "content-block-persistence",
             "provenance",
         ],
     }
@@ -189,6 +192,20 @@ def reject_taxonomy_proposal(
         raise HTTPException(status_code=404, detail="Taxonomy proposal not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/knowledge/documents/{document_id}/content-blocks",
+    response_model=list[ContentBlock],
+)
+def get_content_blocks(
+    document_id: str,
+    page: int | None = Query(default=None, ge=1),
+    kind: str | None = Query(default=None, min_length=1, max_length=32),
+) -> list[ContentBlock]:
+    if knowledge_service.store.get_document(document_id) is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return knowledge_service.extract_content_blocks(document_id, page=page, kind=kind)
 
 
 @app.get(
