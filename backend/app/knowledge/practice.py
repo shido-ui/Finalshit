@@ -146,6 +146,13 @@ class PracticeService:
                 results[question_id] = actual == question.options[expected_label].strip().casefold()
                 continue
 
+            submitted_label = submitted.upper()
+            if submitted_label in question.options:
+                results[question_id] = (
+                    question.options[submitted_label].strip().casefold() == expected_normalized
+                )
+                continue
+
             results[question_id] = False
 
         correct = sum(results.values())
