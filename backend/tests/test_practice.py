@@ -72,3 +72,29 @@ def test_session_cannot_be_submitted_twice(tmp_path):
         assert "already submitted" in str(exc)
     else:
         raise AssertionError("expected duplicate submission to fail")
+
+
+def test_library_items_round_trip_and_sort(tmp_path):
+    from app.knowledge.models import LibraryItem
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    store.save_library_item(
+        LibraryItem(
+            id="lib-a",
+            document_id="doc-a",
+            title="Alpha",
+            pinned=False,
+            created_at="2026-01-01T00:00:00+00:00",
+            updated_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    store.save_library_item(
+        LibraryItem(
+            id="lib-b",
+            document_id="doc-b",
+            title="Beta",
+            pinned=True,
+            created_at="2026-01-02T00:00:00+00:00",
+            updated_at="2026-01-02T00:00:00+00:00",
+        )
+    )
+    assert [item.id for item in store.get_library_items()] == ["lib-b", "lib-a"]
