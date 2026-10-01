@@ -79,3 +79,11 @@ data class ReviewState(
     val lastReviewedAt: String?,
     val lastCorrect: Boolean?
 )
+
+
+data class CopilotAnswer(
+    val answer: String,
+    val citations: List<Int>,
+    val confidence: Double,
+    val evidence: String
+)
