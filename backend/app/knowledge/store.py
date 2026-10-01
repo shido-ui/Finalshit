@@ -13,6 +13,7 @@ from .models import (
     TaxonomyProposal,
     TaxonomyProposalStatus,
     TaxonomyNode,
+    DocumentAsset,
     ProcessingJob,
     ProcessingStatus,
     Provenance,
@@ -68,9 +69,32 @@ class KnowledgeStore:
                     classification_confidence REAL NOT NULL DEFAULT 0.0,
                     classification_reason TEXT,
                     provenance_json TEXT NOT NULL,
+                    asset_ids_json TEXT NOT NULL DEFAULT '[]',
                     FOREIGN KEY(document_id) REFERENCES documents(id)
                 );
 
+
+                CREATE TABLE IF NOT EXISTS document_assets (
+                    id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL,
+                    page_number INTEGER NOT NULL,
+                    asset_index INTEGER NOT NULL,
+                    kind TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    sha256 TEXT NOT NULL,
+                    byte_size INTEGER NOT NULL,
+                    width INTEGER NOT NULL,
+                    height INTEGER NOT NULL,
+                    xref INTEGER NOT NULL,
+                    source_hash TEXT NOT NULL,
+                    storage_path TEXT NOT NULL,
+                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_document_assets_document_page
+                    ON document_assets(document_id, page_number);
+                CREATE INDEX IF NOT EXISTS idx_document_assets_sha256
+                    ON document_assets(sha256);
 
                 CREATE TABLE IF NOT EXISTS taxonomy_nodes (
                     id TEXT PRIMARY KEY,
@@ -145,6 +169,7 @@ class KnowledgeStore:
             "intelligence_provider": "TEXT",
             "classification_status": "TEXT NOT NULL DEFAULT 'unclassified'",
             "classification_reason": "TEXT",
+            "asset_ids_json": "TEXT NOT NULL DEFAULT '[]'",
         }
         for name, definition in migrations.items():
             if name not in columns:
@@ -323,6 +348,7 @@ class KnowledgeStore:
                             [item.model_dump(mode="json") for item in question.provenance],
                             separators=(",", ":"),
                         ),
+                        json.dumps(question.asset_ids, separators=(",", ":")),
                     )
                     for question in questions
                 ],
@@ -382,6 +408,7 @@ class KnowledgeStore:
                 classification_status=ClassificationStatus(row["classification_status"]),
                 classification_confidence=row["classification_confidence"],
                 classification_reason=row["classification_reason"],
+                asset_ids=json.loads(row["asset_ids_json"] or "[]"),
                 provenance=[
                     Provenance.model_validate(item)
                     for item in json.loads(row["provenance_json"])
@@ -410,6 +437,49 @@ class KnowledgeStore:
                 name=row["name"],
                 level=row["level"],
                 parent_id=row["parent_id"],
+            )
+            for row in rows
+        ]
+
+    def replace_document_assets(self, document_id: str, assets: list[DocumentAsset]) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM document_assets WHERE document_id = ?", (document_id,))
+            connection.executemany(
+                """
+                INSERT INTO document_assets (
+                    id, document_id, page_number, asset_index, kind, mime_type,
+                    sha256, byte_size, width, height, xref, source_hash, storage_path
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        item.id, item.document_id, item.page_number, item.asset_index,
+                        item.kind, item.mime_type, item.sha256, item.byte_size,
+                        item.width, item.height, item.xref, item.source_hash,
+                        item.storage_path,
+                    )
+                    for item in assets
+                ],
+            )
+
+    def get_document_assets(self, document_id: str, page: int | None = None) -> list[DocumentAsset]:
+        clauses = ["document_id = ?"]
+        params: list[object] = [document_id]
+        if page is not None:
+            clauses.append("page_number = ?")
+            params.append(page)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM document_assets WHERE {' AND '.join(clauses)} ORDER BY page_number, asset_index, id",
+                params,
+            ).fetchall()
+        return [
+            DocumentAsset(
+                id=row["id"], document_id=row["document_id"], page_number=row["page_number"],
+                asset_index=row["asset_index"], kind=row["kind"], mime_type=row["mime_type"],
+                sha256=row["sha256"], byte_size=row["byte_size"], width=row["width"],
+                height=row["height"], xref=row["xref"], source_hash=row["source_hash"],
+                storage_path=row["storage_path"],
             )
             for row in rows
         ]
