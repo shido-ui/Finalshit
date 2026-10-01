@@ -130,21 +130,24 @@ class MainActivity : ComponentActivity() {
                 }
 
                 Surface(Modifier.fillMaxSize()) {
-                    Column(
+                    LazyColumn(
                         Modifier.fillMaxSize().padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Text("FocusForge", style = MaterialTheme.typography.headlineLarge)
-                        Text(
-                            when (focusState) {
-                                FocusState.IDLE -> "Ready for a focused study session."
-                                FocusState.ARMED -> "Preparing your focus session."
-                                FocusState.LOCKED -> "Focus session active."
-                                FocusState.ENDING -> "Finishing your focus session."
-                            }
-                        )
+                        item { Text("FocusForge", style = MaterialTheme.typography.headlineLarge) }
+                        item {
+                            Text(
+                                when (focusState) {
+                                    FocusState.IDLE -> "Ready for a focused study session."
+                                    FocusState.ARMED -> "Preparing your focus session."
+                                    FocusState.LOCKED -> "Focus session active."
+                                    FocusState.ENDING -> "Finishing your focus session."
+                                }
+                            )
+                        }
 
-                        Card(Modifier.fillMaxWidth()) {
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Backend", style = MaterialTheme.typography.titleMedium)
                                 Text(
@@ -173,7 +176,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        Card(Modifier.fillMaxWidth()) {
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Session", style = MaterialTheme.typography.titleMedium)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -223,7 +227,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        Card(Modifier.fillMaxWidth()) {
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Allowed apps", style = MaterialTheme.typography.titleMedium)
                                 Text(
@@ -251,7 +256,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        Card(Modifier.fillMaxWidth()) {
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Library", style = MaterialTheme.typography.titleMedium)
                                 Text(
@@ -301,19 +307,24 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                        }
 
-                        IntelligenceCard(
+                        item {
+                            IntelligenceCard(
                             repository = backendRepository,
                             onStartAdaptive = { adaptiveLaunchToken += 1 }
                         )
+                        }
 
-                        PracticeCard(
+                        item {
+                            PracticeCard(
                             repository = backendRepository,
                             libraryItems = libraryItems,
                             adaptiveLaunchToken = adaptiveLaunchToken
                         )
 
-                        Card(Modifier.fillMaxWidth()) {
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Usage access", style = MaterialTheme.typography.titleMedium)
                                 Text(
