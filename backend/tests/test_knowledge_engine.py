@@ -156,15 +156,23 @@ def test_tampered_source_is_rejected(tmp_path: Path):
     service = KnowledgeService(store=store, storage_dir=documents_dir)
     record = service.ingest_pdf("sample.pdf", make_pdf())
 
-    (documents_dir / f"{record.id}.pdf").write_bytes(b"tampered")
+    source_path = documents_dir / f"{record.id}.pdf"
+    source_path.write_bytes(b"tampered")
 
     with pytest.raises(ValueError, match="hash does not match"):
         service.extract_questions(record.id)
 
-    with pytest.raises(ValueError, match="hash does not match"):
-        service.process_document(store.pending_jobs()[0].id) if store.pending_jobs() else (_ for _ in ()).throw(
-            ValueError("hash does not match")
-        )
+    job = ProcessingJob(
+        id="tampered-job",
+        document_id=record.id,
+        status=ProcessingStatus.QUEUED,
+        updated_at=store.now(),
+    )
+    store.save_job(job)
+    pending = service.resume_pending()
+
+    assert pending[-1].status is ProcessingStatus.FAILED
+    assert "hash does not match" in pending[-1].error
 
 
 def test_taxonomy_rejects_invalid_graphs():
