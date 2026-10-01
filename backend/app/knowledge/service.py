@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+import os
+import re
+from concurrent.futures import ThreadPoolExecutor
+import time
 from pathlib import Path
 
 import pymupdf
@@ -160,19 +164,20 @@ class KnowledgeService:
         content_blocks: list[ContentBlock],
     ) -> list[QuestionCandidate]:
         extracted = reconstruct_question_candidates(pages)
+        answer_key = self._extract_answer_key(pages)
         questions: list[QuestionCandidate] = []
-        for index, item in enumerate(extracted):
+
+        def build(item):
             normalized_text = " ".join(item.text.casefold().split())
             question_digest = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()[:20]
             question = QuestionCandidate(
-                # Stable across re-ingestion as long as the extracted question text
-                # remains the same; page position changes no longer relabel history.
                 id=f"{document.id}-q-{question_digest}",
                 document_id=document.id,
                 page_start=item.page_start,
                 page_end=item.page_end,
                 text=item.text,
                 number=item.number,
+                answer=answer_key.get(str(item.number)) if item.number else None,
                 asset_ids=self._question_asset_ids(
                     item.text,
                     item.page_start,
@@ -191,23 +196,49 @@ class KnowledgeService:
                 ],
             )
             if self.question_intelligence is not None:
-                question = self.question_intelligence.analyze(question)
-            result = self.classifier.classify(question, self.taxonomy)
-            questions.append(
-                question.model_copy(
-                    update={
-                        "taxonomy_node_id": result.taxonomy_node_id,
-                        "classification_status": (
-                            ClassificationStatus.QUARANTINED
-                            if result.quarantined
-                            else ClassificationStatus.CLASSIFIED
-                        ),
-                        "classification_confidence": result.confidence,
-                        "classification_reason": result.reason,
-                    }
+                question = self.question_intelligence.analyze(question).model_copy(
+                    update={"answer": question.answer or question.answer}
                 )
+            result = self.classifier.classify(question, self.taxonomy)
+            return question.model_copy(
+                update={
+                    "taxonomy_node_id": result.taxonomy_node_id,
+                    "classification_status": (
+                        ClassificationStatus.QUARANTINED
+                        if result.quarantined
+                        else ClassificationStatus.CLASSIFIED
+                    ),
+                    "classification_confidence": result.confidence,
+                    "classification_reason": result.reason,
+                }
             )
+
+        max_workers = max(1, min(8, int(os.getenv("FOCUSFORGE_INGEST_WORKERS", "4"))))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            questions = list(executor.map(build, extracted))
         return questions
+
+    @staticmethod
+    def _extract_answer_key(pages) -> dict[str, str]:
+        result: dict[str, str] = {}
+        answer_key_started = False
+        for page in pages:
+            text = page.text
+            if re.search(r"answer\s+key|answer\s+keys|correct\s+answers", text, re.I):
+                answer_key_started = True
+            if not answer_key_started:
+                continue
+            for line in text.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                for match in re.finditer(
+                    r"(?<!\d)(\d{1,3})\s*(?:[.)\-:]|\s)\s*([A-Da-d]|-?\d+(?:\.\d+)?)\b",
+                    line,
+                ):
+                    number, answer = match.groups()
+                    result[number] = answer.upper()
+        return result
 
     def get_source_pages(self, document_id: str, page_start: int, page_end: int) -> dict[int, str]:
         record = self.store.get_document(document_id)
