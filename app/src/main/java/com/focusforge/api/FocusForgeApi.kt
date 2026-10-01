@@ -37,12 +37,11 @@ class FocusForgeApi(
             parseDocument(json)
         }
 
-    suspend fun getDocument(documentId: String): BackendDocument =
-        withContext(Dispatchers.IO) {
-            parseDocument(
-                JSONObject(request("GET", "/api/v1/knowledge/documents/${encode(documentId)}"))
-            )
-        }
+    suspend fun getDocument(documentId: String): BackendDocument = withContext(Dispatchers.IO) {
+        parseDocument(
+            JSONObject(request("GET", "/api/v1/knowledge/documents/${encode(documentId)}"))
+        )
+    }
 
     suspend fun getLibrary(includeArchived: Boolean = false): List<BackendLibraryItem> =
         withContext(Dispatchers.IO) {
@@ -50,15 +49,7 @@ class FocusForgeApi(
             buildList(array.length()) {
                 for (index in 0 until array.length()) {
                     val item = array.getJSONObject(index)
-                    add(
-                        BackendLibraryItem(
-                            documentId = item.getString("document_id"),
-                            title = item.getString("title"),
-                            pinned = item.getBoolean("pinned"),
-                            archived = item.getBoolean("archived"),
-                            fastModeEnabled = item.getBoolean("fast_mode_enabled")
-                        )
-                    )
+                    add(parseLibraryItem(item))
                 }
             }
         }
@@ -76,15 +67,117 @@ class FocusForgeApi(
         }.joinToString("&")
         val path = "/api/v1/library/${encode(documentId)}" +
             if (params.isEmpty()) "" else "?$params"
-        val item = JSONObject(request("PATCH", path))
-        BackendLibraryItem(
-            documentId = item.getString("document_id"),
-            title = item.getString("title"),
-            pinned = item.getBoolean("pinned"),
-            archived = item.getBoolean("archived"),
-            fastModeEnabled = item.getBoolean("fast_mode_enabled")
+        parseLibraryItem(JSONObject(request("PATCH", path)))
+    }
+
+    suspend fun startPractice(
+        mode: String = "fast",
+        limit: Int = 10,
+        documentId: String? = null,
+        taxonomyNodeId: String? = null
+    ): PracticeStart = withContext(Dispatchers.IO) {
+        require(limit in 1..100) { "Practice limit must be between 1 and 100" }
+        val body = JSONObject().apply {
+            put("mode", mode)
+            put("limit", limit)
+            documentId?.let { put("document_id", it) }
+            taxonomyNodeId?.let { put("taxonomy_node_id", it) }
+        }.toString().toByteArray(Charsets.UTF_8)
+        val json = JSONObject(
+            request(
+                method = "POST",
+                path = "/api/v1/practice/sessions",
+                body = body,
+                contentType = "application/json"
+            )
+        )
+        val sessionJson = json.getJSONObject("session")
+        val questionsJson = json.getJSONArray("questions")
+        PracticeStart(
+            session = parsePracticeSession(sessionJson),
+            questions = buildList(questionsJson.length()) {
+                for (index in 0 until questionsJson.length()) {
+                    add(parsePracticeQuestion(questionsJson.getJSONObject(index)))
+                }
+            }
         )
     }
+
+    suspend fun submitPractice(
+        sessionId: String,
+        answers: Map<String, String>
+    ): PracticeResult = withContext(Dispatchers.IO) {
+        val answersJson = JSONObject().apply {
+            answers.forEach { (id, answer) -> put(id, answer) }
+        }
+        val body = JSONObject().apply { put("answers", answersJson) }
+            .toString().toByteArray(Charsets.UTF_8)
+        val json = JSONObject(
+            request(
+                method = "POST",
+                path = "/api/v1/practice/sessions/${encode(sessionId)}/submit",
+                body = body,
+                contentType = "application/json"
+            )
+        )
+        val resultJson = json.getJSONObject("question_results")
+        val results = buildMap(resultJson.length()) {
+            val keys = resultJson.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                put(key, resultJson.getBoolean(key))
+            }
+        }
+        PracticeResult(
+            sessionId = json.getString("session_id"),
+            score = json.getInt("score"),
+            total = json.getInt("total"),
+            answered = json.getInt("answered"),
+            correct = json.getInt("correct"),
+            percentage = json.getDouble("percentage"),
+            questionResults = results
+        )
+    }
+
+    private fun parseLibraryItem(item: JSONObject) = BackendLibraryItem(
+        documentId = item.getString("document_id"),
+        title = item.getString("title"),
+        pinned = item.getBoolean("pinned"),
+        archived = item.getBoolean("archived"),
+        fastModeEnabled = item.getBoolean("fast_mode_enabled")
+    )
+
+    private fun parsePracticeSession(json: JSONObject) = PracticeSession(
+        id = json.getString("id"),
+        mode = json.getString("mode"),
+        questionIds = json.getJSONArray("question_ids").let { array ->
+            buildList(array.length()) { for (i in 0 until array.length()) add(array.getString(i)) }
+        },
+        startedAt = json.getString("started_at"),
+        submittedAt = json.optString("submitted_at").takeIf { it.isNotBlank() && it != "null" },
+        score = if (json.isNull("score")) null else json.getInt("score"),
+        total = json.getInt("total"),
+        answered = json.getInt("answered")
+    )
+
+    private fun parsePracticeQuestion(json: JSONObject) = PracticeQuestion(
+        id = json.getString("id"),
+        position = json.getInt("position"),
+        text = json.getString("text"),
+        options = json.optJSONObject("options")?.let { options ->
+            buildMap(options.length()) {
+                val keys = options.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    put(key, options.getString(key))
+                }
+            }
+        } ?: emptyMap(),
+        taxonomyNodeId = json.optString("taxonomy_node_id").takeIf { it.isNotBlank() && it != "null" },
+        difficulty = json.optString("difficulty").takeIf { it.isNotBlank() && it != "null" },
+        hasDiagram = json.optBoolean("has_diagram", false),
+        hasTable = json.optBoolean("has_table", false)
+    )
 
     private fun request(
         method: String,
