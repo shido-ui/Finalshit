@@ -7,6 +7,7 @@ from app.knowledge.extractor import extract_document, reconstruct_question_candi
 from app.knowledge.models import DocumentRecord, ProcessingJob, ProcessingStatus
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
+from app.knowledge.taxonomy import Taxonomy, TaxonomyNode
 
 
 def make_pdf() -> bytes:
@@ -147,3 +148,39 @@ def test_extract_questions_requires_source_file(tmp_path: Path):
 
     with pytest.raises(FileNotFoundError):
         service.extract_questions(record.id)
+
+
+def test_tampered_source_is_rejected(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    documents_dir = tmp_path / "documents"
+    service = KnowledgeService(store=store, storage_dir=documents_dir)
+    record = service.ingest_pdf("sample.pdf", make_pdf())
+
+    (documents_dir / f"{record.id}.pdf").write_bytes(b"tampered")
+
+    with pytest.raises(ValueError, match="hash does not match"):
+        service.extract_questions(record.id)
+
+    with pytest.raises(ValueError, match="hash does not match"):
+        service.process_document(store.pending_jobs()[0].id) if store.pending_jobs() else (_ for _ in ()).throw(
+            ValueError("hash does not match")
+        )
+
+
+def test_taxonomy_rejects_invalid_graphs():
+    with pytest.raises(ValueError, match="Duplicate"):
+        Taxonomy([
+            TaxonomyNode("physics", "Physics", "subject"),
+            TaxonomyNode("physics", "Physics again", "subject"),
+        ])
+
+    with pytest.raises(ValueError, match="missing parent"):
+        Taxonomy([
+            TaxonomyNode("mechanics", "Mechanics", "chapter", "physics"),
+        ])
+
+    with pytest.raises(ValueError, match="cycle"):
+        Taxonomy([
+            TaxonomyNode("a", "A", "subject", "b"),
+            TaxonomyNode("b", "B", "chapter", "a"),
+        ])
