@@ -108,6 +108,10 @@ class KnowledgeStore:
                     byte_size INTEGER NOT NULL,
                     width INTEGER NOT NULL,
                     height INTEGER NOT NULL,
+                    x0 REAL NOT NULL DEFAULT 0,
+                    y0 REAL NOT NULL DEFAULT 0,
+                    x1 REAL NOT NULL DEFAULT 0,
+                    y1 REAL NOT NULL DEFAULT 0,
                     xref INTEGER NOT NULL,
                     source_hash TEXT NOT NULL,
                     storage_path TEXT NOT NULL,
@@ -165,6 +169,7 @@ class KnowledgeStore:
                 """
             )
             self._migrate_questions(connection)
+            self._migrate_document_assets(connection)
             self._migrate_taxonomy_proposals(connection)
             self._seed_taxonomy(connection)
             connection.execute(
@@ -508,6 +513,18 @@ class KnowledgeStore:
             for row in rows
         ]
 
+    @staticmethod
+    def _migrate_document_assets(connection) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(document_assets)").fetchall()
+        }
+        for name in ("x0", "y0", "x1", "y1"):
+            if name not in columns:
+                connection.execute(
+                    f"ALTER TABLE document_assets ADD COLUMN {name} REAL NOT NULL DEFAULT 0"
+                )
+
     def replace_document_assets(self, document_id: str, assets: list[DocumentAsset]) -> None:
         with self._connect() as connection:
             connection.execute("DELETE FROM document_assets WHERE document_id = ?", (document_id,))
@@ -515,15 +532,15 @@ class KnowledgeStore:
                 """
                 INSERT INTO document_assets (
                     id, document_id, page_number, asset_index, kind, mime_type,
-                    sha256, byte_size, width, height, xref, source_hash, storage_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    sha256, byte_size, width, height, x0, y0, x1, y1, xref, source_hash, storage_path
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 """,
                 [
                     (
                         item.id, item.document_id, item.page_number, item.asset_index,
                         item.kind, item.mime_type, item.sha256, item.byte_size,
-                        item.width, item.height, item.xref, item.source_hash,
-                        item.storage_path,
+                        item.width, item.height, item.x0, item.y0, item.x1, item.y1,
+                        item.xref, item.source_hash, item.storage_path,
                     )
                     for item in assets
                 ],
@@ -561,7 +578,7 @@ class KnowledgeStore:
                 id=row["id"], document_id=row["document_id"], page_number=row["page_number"],
                 asset_index=row["asset_index"], kind=row["kind"], mime_type=row["mime_type"],
                 sha256=row["sha256"], byte_size=row["byte_size"], width=row["width"],
-                height=row["height"], xref=row["xref"], source_hash=row["source_hash"],
+                height=row["height"], x0=row["x0"], y0=row["y0"], x1=row["x1"], y1=row["y1"], xref=row["xref"], source_hash=row["source_hash"],
                 storage_path=row["storage_path"],
             )
             for row in rows
