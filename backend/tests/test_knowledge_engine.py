@@ -57,8 +57,9 @@ def test_pending_job_can_resume(tmp_path: Path):
 
     digest = __import__("hashlib").sha256(content).hexdigest()
     document_id = digest[:24]
-    (tmp_path / "documents").mkdir()
-    (tmp_path / "documents" / f"{document_id}.pdf").write_bytes(content)
+    documents_dir = tmp_path / "documents"
+    documents_dir.mkdir(exist_ok=True)
+    (documents_dir / f"{document_id}.pdf").write_bytes(content)
 
     store.save_document(
         DocumentRecord(
