@@ -340,16 +340,7 @@ class KnowledgeService:
         if self.solution_engine is None:
             raise RuntimeError("Solution engine is not configured")
 
-        with self.store._connect() as connection:
-            row = connection.execute(
-                "SELECT document_id FROM questions WHERE id = ?",
-                (question_id,),
-            ).fetchone()
-        if row is None:
-            raise KeyError(question_id)
-
-        questions = self.store.get_questions(row["document_id"])
-        question = next((item for item in questions if item.id == question_id), None)
+        question = self.store.get_question(question_id)
         if question is None:
             raise KeyError(question_id)
 
