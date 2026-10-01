@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Protocol
 
 from .models import QuestionCandidate
@@ -50,23 +51,66 @@ class KeywordTaxonomyClassifier:
             if score:
                 scores.append((node_id, score))
 
-        if not scores:
-            return ClassificationResult(None, 0.0, "No controlled-taxonomy keyword evidence", True)
+        if scores:
+            scores.sort(key=lambda item: (-item[1], item[0]))
+            winner, winner_score = scores[0]
+            runner_up_score = scores[1][1] if len(scores) > 1 else 0
 
-        scores.sort(key=lambda item: (-item[1], item[0]))
-        winner, winner_score = scores[0]
-        runner_up_score = scores[1][1] if len(scores) > 1 else 0
+            if len(scores) > 1 and winner_score == runner_up_score:
+                return ClassificationResult(None, 0.0, "Classification evidence is ambiguous", True)
 
-        if len(scores) > 1 and winner_score == runner_up_score:
+            confidence = min(0.99, 0.60 + 0.10 * winner_score)
+            if confidence >= self.minimum_confidence:
+                return ClassificationResult(
+                    winner, confidence, "Controlled keyword evidence", False
+                )
+
+        # Once the canonical registry contains chapter/topic/subtopic nodes,
+        # use their names as additional deterministic evidence. This makes
+        # approved AI-created nodes usable by the classifier without allowing
+        # the model to invent IDs or bypass the confidence gate.
+        text_tokens = set(re.findall(r"[\w]+", text))
+        node_matches: list[tuple[str, float]] = []
+        for node in taxonomy.all():
+            if node.level == "subject":
+                continue
+            normalized_name = node.name.casefold()
+            name_tokens = [
+                token for token in re.findall(r"[\w]+", normalized_name)
+                if len(token) >= 4
+            ]
+            if not name_tokens:
+                continue
+            matched = sum(token in text_tokens for token in name_tokens)
+            phrase = " ".join(name_tokens) in " ".join(re.findall(r"[\w]+", text))
+            ratio = matched / len(name_tokens)
+            if phrase or (matched >= 2 and ratio >= 0.5):
+                score = 3.0 if phrase else matched + ratio
+                node_matches.append((node.id, score))
+
+        if not node_matches:
+            return ClassificationResult(None, 0.0, "No controlled-taxonomy evidence", True)
+
+        node_matches.sort(key=lambda item: (-item[1], item[0]))
+        winner, winner_score = node_matches[0]
+        runner_up_score = node_matches[1][1] if len(node_matches) > 1 else 0.0
+        if len(node_matches) > 1 and winner_score == runner_up_score:
             return ClassificationResult(None, 0.0, "Classification evidence is ambiguous", True)
 
-        confidence = min(0.99, 0.60 + 0.10 * winner_score)
+        confidence = min(0.99, 0.72 + 0.08 * winner_score)
         if confidence < self.minimum_confidence:
             return ClassificationResult(
-                None, confidence, "Classification confidence below quarantine threshold", True
+                None,
+                confidence,
+                "Classification confidence below quarantine threshold",
+                True,
             )
-
-        return ClassificationResult(winner, confidence, "Controlled keyword evidence", False)
+        return ClassificationResult(
+            winner,
+            confidence,
+            "Controlled taxonomy-name evidence",
+            False,
+        )
 
 
 DEFAULT_CLASSIFIER = KeywordTaxonomyClassifier(

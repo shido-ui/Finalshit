@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.knowledge.models import (
     ClassificationStatus,
@@ -10,10 +10,10 @@ from app.knowledge.models import (
     QuestionCandidate,
     TaxonomyNode,
     TaxonomyProposal,
+    TaxonomyProposalResolution,
 )
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
-from app.knowledge.taxonomy import DEFAULT_TAXONOMY
 from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
 
 app = FastAPI(title="FocusForge AI Gateway", version="0.1.0")
@@ -56,6 +56,9 @@ def bootstrap() -> dict[str, object]:
             "hierarchical-taxonomy-filtering",
             "ai-taxonomy-discovery",
             "taxonomy-proposals",
+            "taxonomy-registry",
+            "taxonomy-proposal-resolution",
+            "dynamic-taxonomy-classification",
             "provenance",
         ],
     }
@@ -70,7 +73,7 @@ def taxonomy() -> list[TaxonomyNode]:
             level=node.level,
             parent_id=node.parent_id,
         )
-        for node in DEFAULT_TAXONOMY.all()
+        for node in knowledge_service.taxonomy.all()
     ]
 
 
@@ -135,6 +138,42 @@ def get_document_taxonomy_proposals(document_id: str) -> list[TaxonomyProposal]:
     if knowledge_service.store.get_document(document_id) is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return knowledge_service.store.get_taxonomy_proposals(document_id)
+
+
+class TaxonomyRejectRequest(BaseModel):
+    reason: str = Field(default="Rejected during taxonomy review", max_length=500)
+
+
+@app.post(
+    "/api/v1/knowledge/taxonomy/proposals/{proposal_id}/approve",
+    response_model=TaxonomyProposalResolution,
+)
+def approve_taxonomy_proposal(proposal_id: str) -> TaxonomyProposalResolution:
+    try:
+        return knowledge_service.approve_taxonomy_proposal(proposal_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Taxonomy proposal not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/knowledge/taxonomy/proposals/{proposal_id}/reject",
+    response_model=TaxonomyProposalResolution,
+)
+def reject_taxonomy_proposal(
+    proposal_id: str,
+    request: TaxonomyRejectRequest | None = None,
+) -> TaxonomyProposalResolution:
+    try:
+        return knowledge_service.reject_taxonomy_proposal(
+            proposal_id,
+            request.reason if request is not None else "Rejected during taxonomy review",
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Taxonomy proposal not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get(

@@ -15,9 +15,13 @@ from .models import (
     ProcessingStatus,
     Provenance,
     QuestionCandidate,
+    TaxonomyProposal,
+    TaxonomyProposalResolution,
+    TaxonomyProposalStatus,
 )
 from .store import KnowledgeStore
 from .taxonomy import DEFAULT_TAXONOMY, Taxonomy
+from .taxonomy_registry import TaxonomyRegistry
 from .taxonomy_ai import (
     TaxonomyProposalEngine,
     TaxonomyProposalProvider,
@@ -36,7 +40,8 @@ class KnowledgeService:
         self.store = store
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
-        self.taxonomy = taxonomy
+        self.registry = TaxonomyRegistry(store)
+        self.taxonomy = self.registry.taxonomy if taxonomy is DEFAULT_TAXONOMY else taxonomy
         self.classifier = classifier
         self.taxonomy_proposal_provider = taxonomy_proposal_provider
 
@@ -241,6 +246,104 @@ class KnowledgeService:
             classification_status=classification_status,
         )
 
+
+    def approve_taxonomy_proposal(
+        self,
+        proposal_id: str,
+    ) -> TaxonomyProposalResolution:
+        proposal = self.store.get_taxonomy_proposal(proposal_id)
+        if proposal is None:
+            raise KeyError(proposal_id)
+
+        if proposal.status is not TaxonomyProposalStatus.PENDING:
+            raise ValueError(
+                f"Proposal {proposal.id} is already {proposal.status.value}"
+            )
+
+        effective = proposal
+        if proposal.parent_id and proposal.parent_id.startswith("new:"):
+            parent_proposal_id = f"{proposal.document_id}-{proposal.parent_id}"
+            parent_proposal = self.store.get_taxonomy_proposal(parent_proposal_id)
+            if parent_proposal is None:
+                raise ValueError(
+                    f"Parent proposal {proposal.parent_id!r} does not exist"
+                )
+            if parent_proposal.status is not TaxonomyProposalStatus.APPROVED:
+                raise ValueError(
+                    f"Parent proposal {parent_proposal.id!r} must be approved first"
+                )
+            if parent_proposal.resolved_node_id is None:
+                raise ValueError(
+                    f"Parent proposal {parent_proposal.id!r} has no resolved taxonomy node"
+                )
+            effective = proposal.model_copy(
+                update={"parent_id": parent_proposal.resolved_node_id}
+            )
+
+        resolution = self.registry.approve(effective)
+        self.store.resolve_taxonomy_proposal(
+            proposal.id,
+            TaxonomyProposalStatus.APPROVED,
+            resolution.node_id,
+            resolution.reason,
+        )
+        self.taxonomy = self.registry.refresh()
+        self._reclassify_document_questions(proposal.document_id)
+        return TaxonomyProposalResolution(
+            proposal_id=proposal.id,
+            status=TaxonomyProposalStatus.APPROVED,
+            resolved_node_id=resolution.node_id,
+            created=resolution.created,
+            reason=resolution.reason,
+        )
+
+    def reject_taxonomy_proposal(
+        self,
+        proposal_id: str,
+        reason: str = "Rejected during taxonomy review",
+    ) -> TaxonomyProposalResolution:
+        proposal = self.store.get_taxonomy_proposal(proposal_id)
+        if proposal is None:
+            raise KeyError(proposal_id)
+        if proposal.status is not TaxonomyProposalStatus.PENDING:
+            raise ValueError(
+                f"Proposal {proposal.id} is already {proposal.status.value}"
+            )
+        clean_reason = reason.strip() or "Rejected during taxonomy review"
+        self.store.resolve_taxonomy_proposal(
+            proposal.id,
+            TaxonomyProposalStatus.REJECTED,
+            None,
+            clean_reason,
+        )
+        return TaxonomyProposalResolution(
+            proposal_id=proposal.id,
+            status=TaxonomyProposalStatus.REJECTED,
+            reason=clean_reason,
+        )
+
+    def _reclassify_document_questions(self, document_id: str) -> None:
+        questions = self.store.get_questions(document_id)
+        if not questions:
+            return
+        updated: list[QuestionCandidate] = []
+        for question in questions:
+            result = self.classifier.classify(question, self.taxonomy)
+            updated.append(
+                question.model_copy(
+                    update={
+                        "taxonomy_node_id": result.taxonomy_node_id,
+                        "classification_status": (
+                            ClassificationStatus.QUARANTINED
+                            if result.quarantined
+                            else ClassificationStatus.CLASSIFIED
+                        ),
+                        "classification_confidence": result.confidence,
+                        "classification_reason": result.reason,
+                    }
+                )
+            )
+        self.store.replace_questions(document_id, updated)
 
     def propose_taxonomy(
         self,
