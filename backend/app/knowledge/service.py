@@ -5,7 +5,6 @@ import uuid
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
-import time
 from pathlib import Path
 
 import pymupdf
