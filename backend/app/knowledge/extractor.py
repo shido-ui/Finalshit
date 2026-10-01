@@ -8,11 +8,11 @@ import pymupdf
 
 
 QUESTION_START = re.compile(
-    r"^\s*(?:Q(?:uestion)?\s*)?(\d{1,4})\s*[.)\-:]\s+",
+    r"^\s*(?:Q(?:uestion)?\s*)?(\d{1,4})\s*[.\-:]\s+",
     re.IGNORECASE,
 )
-QUESTION_WORD_START = re.compile(
-    r"^\s*Q(?:uestion)?\s*\d{1,4}\s*[.)\-:]\s+",
+QUESTION_PAREN_START = re.compile(
+    r"^\s*(?:Q(?:uestion)?\s*)?(\d{1,4})\)\s+",
     re.IGNORECASE,
 )
 OPTION_LINE = re.compile(r"^\s*[(\[]?[A-Da-d][)\].:]\s+")
@@ -143,11 +143,13 @@ def _is_numbered_option(line: str, current_text: list[str]) -> bool:
 
 def _is_question_start(line: str, current_text: list[str]) -> re.Match[str] | None:
     match = QUESTION_START.match(line)
-    if not match:
-        return None
-    if _is_numbered_option(line, current_text):
-        return None
-    return match
+    if match:
+        return match
+    # Parenthesized/closing-paren numbering is ambiguous with JEE choices.
+    # Treat it as a question only when there is no active question yet.
+    if not current_text:
+        return QUESTION_PAREN_START.match(line)
+    return None
 
 
 def _clean_page_lines(text: str) -> list[str]:
