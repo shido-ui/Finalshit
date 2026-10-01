@@ -374,6 +374,39 @@ class KnowledgeStore:
             ],
         )
 
+    def delete_document(self, document_id: str) -> bool:
+        with self._connect() as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            exists = connection.execute(
+                "SELECT 1 FROM documents WHERE id = ?", (document_id,)
+            ).fetchone()
+            if exists is None:
+                return False
+            connection.execute(
+                "DELETE FROM solutions WHERE document_id = ?", (document_id,)
+            )
+            connection.execute(
+                "DELETE FROM questions WHERE document_id = ?", (document_id,)
+            )
+            connection.execute(
+                "DELETE FROM content_blocks WHERE document_id = ?", (document_id,)
+            )
+            connection.execute(
+                "DELETE FROM document_assets WHERE document_id = ?", (document_id,)
+            )
+            connection.execute(
+                "DELETE FROM taxonomy_proposals WHERE document_id = ?", (document_id,)
+            )
+            connection.execute(
+                "DELETE FROM processing_jobs WHERE document_id = ?", (document_id,)
+            )
+            connection.execute(
+                "DELETE FROM library_items WHERE document_id = ?", (document_id,)
+            )
+            connection.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+            return True
+
+
     def save_document(self, document: DocumentRecord) -> None:
         with self._connect() as connection:
             connection.execute(
