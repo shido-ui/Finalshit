@@ -7,7 +7,13 @@ from pathlib import Path
 import pymupdf
 
 from .extractor import extract_document, reconstruct_question_candidates
-from .models import DocumentRecord, ProcessingStatus, QuestionCandidate, Provenance
+from .models import (
+    DocumentRecord,
+    ProcessingJob,
+    ProcessingStatus,
+    Provenance,
+    QuestionCandidate,
+)
 from .store import KnowledgeStore
 
 
@@ -40,27 +46,87 @@ class KnowledgeService:
             filename=filename,
             sha256=digest,
             page_count=page_count,
-            status=ProcessingStatus.EXTRACTING,
+            status=ProcessingStatus.QUEUED,
         )
         self.store.save_document(record)
+
+        job = ProcessingJob(
+            id=str(uuid.uuid4()),
+            document_id=document_id,
+            status=ProcessingStatus.QUEUED,
+            updated_at=self.store.now(),
+        )
+        self.store.save_job(job)
+        return self.process_document(job.id)
+
+    def process_document(self, job_id: str) -> DocumentRecord:
+        job = self.store.get_job(job_id)
+        if job is None:
+            raise KeyError(job_id)
+
+        record = self.store.get_document(job.document_id)
+        if record is None:
+            raise KeyError(job.document_id)
+
+        source_path = self.storage_dir / f"{record.id}.pdf"
+        if not source_path.is_file():
+            failed = record.model_copy(
+                update={"status": ProcessingStatus.FAILED, "error": "Source PDF is missing"}
+            )
+            self.store.save_document(failed)
+            self.store.save_job(
+                job.model_copy(
+                    update={
+                        "status": ProcessingStatus.FAILED,
+                        "updated_at": self.store.now(),
+                    }
+                )
+            )
+            return failed
+
+        running_job = job.model_copy(
+            update={"status": ProcessingStatus.EXTRACTING, "updated_at": self.store.now()}
+        )
+        self.store.save_job(running_job)
+        running = record.model_copy(update={"status": ProcessingStatus.EXTRACTING, "error": None})
+        self.store.save_document(running)
 
         try:
             pages = extract_document(str(source_path))
             questions = reconstruct_question_candidates(pages)
-            record = record.model_copy(
+            ready = running.model_copy(
                 update={
                     "status": ProcessingStatus.READY,
                     "question_count": len(questions),
                 }
             )
-            self.store.save_document(record)
-            return record
+            self.store.save_document(ready)
+            self.store.save_job(
+                running_job.model_copy(
+                    update={
+                        "status": ProcessingStatus.READY,
+                        "updated_at": self.store.now(),
+                    }
+                )
+            )
+            return ready
         except Exception as exc:
-            record = record.model_copy(
+            failed = running.model_copy(
                 update={"status": ProcessingStatus.FAILED, "error": str(exc)}
             )
-            self.store.save_document(record)
+            self.store.save_document(failed)
+            self.store.save_job(
+                running_job.model_copy(
+                    update={
+                        "status": ProcessingStatus.FAILED,
+                        "updated_at": self.store.now(),
+                    }
+                )
+            )
             raise
+
+    def resume_pending(self) -> list[DocumentRecord]:
+        return [self.process_document(job.id) for job in self.store.pending_jobs()]
 
     def extract_questions(self, document_id: str) -> list[QuestionCandidate]:
         document = self.store.get_document(document_id)
