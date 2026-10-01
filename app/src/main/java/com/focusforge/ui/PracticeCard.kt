@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -48,12 +49,27 @@ fun PracticeCard(
     var mode by remember { mutableStateOf("fast") }
     var limit by remember { mutableIntStateOf(10) }
     var questions by remember { mutableStateOf<List<PracticeQuestion>>(emptyList()) }
-    var sessionId by remember { mutableStateOf<String?>(null) }
+    var sessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<PracticeResult?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var completedQuestions by remember { mutableStateOf<List<PracticeQuestion>>(emptyList()) }
     val answers = remember { mutableStateMapOf<String, String>() }
+
+    LaunchedEffect(sessionId) {
+        val id = sessionId ?: return@LaunchedEffect
+        if (questions.isEmpty()) {
+            runCatching { repository.getPracticeSession(id) }
+                .onSuccess {
+                    mode = it.session.mode
+                    questions = it.questions
+                }
+                .onFailure {
+                    sessionId = null
+                    error = "Saved practice session could not be restored."
+                }
+        }
+    }
 
     LaunchedEffect(adaptiveLaunchToken) {
         if (adaptiveLaunchToken > 0 && sessionId == null) {
