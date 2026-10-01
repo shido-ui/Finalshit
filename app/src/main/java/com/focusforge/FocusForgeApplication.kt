@@ -5,6 +5,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.focusforge.data.DatabaseProvider
+import com.focusforge.data.LibraryRepository
 import com.focusforge.focus.FocusSessionManager
 import com.focusforge.focus.FocusSessionRepository
 import com.focusforge.work.FocusMaintenanceWorker
@@ -19,11 +20,15 @@ class FocusForgeApplication : Application() {
     lateinit var sessionManager: FocusSessionManager
         private set
 
+    lateinit var libraryRepository: LibraryRepository
+        private set
+
     override fun onCreate() {
         super.onCreate()
 
         val database = DatabaseProvider.create(this)
         val repository = FocusSessionRepository(database.focusSessionDao())
+        libraryRepository = LibraryRepository(database.libraryItemDao())
         val workManager = WorkManager.getInstance(this)
 
         sessionManager = FocusSessionManager(
