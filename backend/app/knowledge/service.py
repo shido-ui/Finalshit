@@ -41,6 +41,10 @@ class KnowledgeService:
             source_path.unlink(missing_ok=True)
             raise ValueError("The uploaded file is not a readable PDF") from exc
 
+        if page_count == 0:
+            source_path.unlink(missing_ok=True)
+            raise ValueError("The uploaded PDF contains no pages")
+
         record = DocumentRecord(
             id=document_id,
             filename=filename,
@@ -88,7 +92,9 @@ class KnowledgeService:
             update={"status": ProcessingStatus.EXTRACTING, "updated_at": self.store.now()}
         )
         self.store.save_job(running_job)
-        running = record.model_copy(update={"status": ProcessingStatus.EXTRACTING, "error": None})
+        running = record.model_copy(
+            update={"status": ProcessingStatus.EXTRACTING, "error": None}
+        )
         self.store.save_document(running)
 
         try:
@@ -134,6 +140,9 @@ class KnowledgeService:
             raise KeyError(document_id)
 
         source_path = self.storage_dir / f"{document_id}.pdf"
+        if not source_path.is_file():
+            raise FileNotFoundError(document_id)
+
         pages = extract_document(str(source_path))
         extracted = reconstruct_question_candidates(pages)
 
