@@ -4,7 +4,12 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.knowledge.models import DocumentRecord, QuestionCandidate, TaxonomyNode
+from app.knowledge.models import (
+    ClassificationStatus,
+    DocumentRecord,
+    QuestionCandidate,
+    TaxonomyNode,
+)
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy import DEFAULT_TAXONOMY
@@ -40,6 +45,9 @@ def bootstrap() -> dict[str, object]:
             "question-reconstruction",
             "question-indexing",
             "question-filtering",
+            "taxonomy-classification",
+            "classification-confidence",
+            "classification-quarantine",
             "taxonomy",
             "provenance",
         ],
@@ -110,12 +118,14 @@ def get_questions(
     document_id: str,
     taxonomy_node_id: str | None = Query(default=None, min_length=1),
     page: int | None = Query(default=None, ge=1),
+    classification_status: ClassificationStatus | None = None,
 ) -> list[QuestionCandidate]:
     try:
         return knowledge_service.extract_questions(
             document_id,
             taxonomy_node_id=taxonomy_node_id,
             page=page,
+            classification_status=classification_status,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Document not found") from exc
