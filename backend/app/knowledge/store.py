@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import DocumentRecord, ProcessingJob, ProcessingStatus
+from .models import DocumentRecord, ProcessingJob, ProcessingStatus, Provenance, QuestionCandidate
 
 
 class KnowledgeStore:
@@ -31,6 +32,26 @@ class KnowledgeStore:
                     updated_at TEXT NOT NULL,
                     FOREIGN KEY(document_id) REFERENCES documents(id)
                 );
+
+                CREATE TABLE IF NOT EXISTS questions (
+                    id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL,
+                    page_start INTEGER NOT NULL,
+                    page_end INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    number TEXT,
+                    taxonomy_node_id TEXT,
+                    classification_confidence REAL NOT NULL DEFAULT 0.0,
+                    provenance_json TEXT NOT NULL,
+                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_questions_document
+                    ON questions(document_id);
+                CREATE INDEX IF NOT EXISTS idx_questions_taxonomy
+                    ON questions(taxonomy_node_id);
+                CREATE INDEX IF NOT EXISTS idx_questions_page_start
+                    ON questions(page_start);
                 """
             )
 
@@ -125,6 +146,75 @@ class KnowledgeStore:
                 document_id=row["document_id"],
                 status=ProcessingStatus(row["status"]),
                 updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+
+    def replace_questions(self, document_id: str, questions: list[QuestionCandidate]) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM questions WHERE document_id = ?", (document_id,))
+            connection.executemany(
+                """
+                INSERT INTO questions (
+                    id, document_id, page_start, page_end, text, number,
+                    taxonomy_node_id, classification_confidence, provenance_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        question.id,
+                        question.document_id,
+                        question.page_start,
+                        question.page_end,
+                        question.text,
+                        question.number,
+                        question.taxonomy_node_id,
+                        question.classification_confidence,
+                        json.dumps(
+                            [item.model_dump(mode="json") for item in question.provenance],
+                            separators=(",", ":"),
+                        ),
+                    )
+                    for question in questions
+                ],
+            )
+
+    def get_questions(
+        self,
+        document_id: str,
+        taxonomy_node_id: str | None = None,
+        page: int | None = None,
+    ) -> list[QuestionCandidate]:
+        clauses = ["document_id = ?"]
+        params: list[object] = [document_id]
+
+        if taxonomy_node_id is not None:
+            clauses.append("taxonomy_node_id = ?")
+            params.append(taxonomy_node_id)
+        if page is not None:
+            clauses.append("page_start <= ? AND page_end >= ?")
+            params.extend([page, page])
+
+        query = f"""
+            SELECT * FROM questions
+            WHERE {" AND ".join(clauses)}
+            ORDER BY page_start, id
+        """
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+
+        return [
+            QuestionCandidate(
+                id=row["id"],
+                document_id=row["document_id"],
+                page_start=row["page_start"],
+                page_end=row["page_end"],
+                text=row["text"],
+                number=row["number"],
+                taxonomy_node_id=row["taxonomy_node_id"],
+                classification_confidence=row["classification_confidence"],
+                provenance=[Provenance.model_validate(item) for item in json.loads(row["provenance_json"])],
             )
             for row in rows
         ]
