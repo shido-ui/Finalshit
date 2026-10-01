@@ -76,7 +76,8 @@ def test_unknown_or_ambiguous_evidence_is_quarantined():
 
 def test_classifier_never_returns_unknown_taxonomy_ids():
     classifier = KeywordTaxonomyClassifier(
-        {"does-not-exist": ("force",), "physics": ("velocity",)}
+        {"does-not-exist": ("force",), "physics": ("velocity",)},
+        minimum_confidence=0.60,
     )
 
     result = classifier.classify(question("velocity is measured here"), taxonomy())
