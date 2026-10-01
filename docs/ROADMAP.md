@@ -1,10 +1,14 @@
 # FocusForge Engineering Roadmap
 
-1. Foundation — Android shell, Compose, Room/DataStore/WorkManager foundations, FastAPI gateway, CI and documentation.
-2. Focus OS — launcher, scheduling, session persistence, usage monitoring, supported enforcement and recovery.
+1. Foundation — **implemented**. Android shell, Compose, Room/DataStore/WorkManager foundations, FastAPI gateway, CI and documentation.
+2. Focus OS — **in progress**. Persistent focus-session state machine, Room-backed lifecycle, WorkManager expiry/recovery, usage-access detection and a real session UI are implemented. App blocking/enforcement is intentionally not faked; the next Focus OS work adds supported launcher/enforcement capabilities.
 3. Knowledge Engine — PDF ingestion, rendering, extraction, question reconstruction, diagrams, taxonomy, provenance and resumable processing.
 4. Solution Engine — structured Solution objects, generation, validators and verification.
 5. Library + Practice — local Library, Fast Mode, question bank, tests, scoring and results.
 6. Intelligence — mistake intelligence, weakness model, adaptive practice, SRS and Knowledge Graph foundations.
 7. AI + Hard Mode — grounded Study Copilot and strongest supported Device Owner/Lock Task implementation.
 8. Hardening — performance, battery, rendering, accessibility, security, regression benchmark, crash reduction and release readiness.
+
+## Phase rule
+
+Each phase is implemented in a focused pass, then checked for bugs and build/test regressions before moving to the next phase. A phase is not declared green while its validation is still running.
