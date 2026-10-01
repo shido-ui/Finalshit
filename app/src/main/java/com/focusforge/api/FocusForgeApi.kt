@@ -177,6 +177,36 @@ class FocusForgeApi(
         )
     }
 
+    suspend fun getQuestionSolution(questionId: String): QuestionSolution = withContext(Dispatchers.IO) {
+        parseQuestionSolution(
+            JSONObject(
+                request("GET", "/api/v1/knowledge/questions/${encode(questionId)}/solution")
+            )
+        )
+    }
+
+    suspend fun generateQuestionSolution(questionId: String): QuestionSolution = withContext(Dispatchers.IO) {
+        parseQuestionSolution(
+            JSONObject(
+                request(
+                    "POST",
+                    "/api/v1/knowledge/questions/${encode(questionId)}/solution"
+                )
+            )
+        )
+    }
+
+    private fun parseQuestionSolution(json: JSONObject) = QuestionSolution(
+        answer = json.optString("answer").takeIf { it.isNotBlank() && it != "null" },
+        method = json.getString("method"),
+        steps = json.getJSONArray("steps").let { array ->
+            buildList(array.length()) { for (i in 0 until array.length()) add(array.getString(i)) }
+        },
+        finalAnswer = json.getString("final_answer"),
+        status = json.getString("status"),
+        validationReason = json.getString("validation_reason")
+    )
+
     suspend fun getWeaknesses(limit: Int = 20): List<WeaknessProfile> = withContext(Dispatchers.IO) {
         require(limit in 1..500) { "Weakness limit must be between 1 and 500" }
         val array = JSONArray(request("GET", "/api/v1/intelligence/weaknesses?limit=$limit"))
@@ -313,4 +343,14 @@ class FocusForgeApi(
 data class QuestionAsset(
     val id: String,
     val mimeType: String
+)
+
+
+data class QuestionSolution(
+    val answer: String?,
+    val method: String,
+    val steps: List<String>,
+    val finalAnswer: String,
+    val status: String,
+    val validationReason: String
 )
