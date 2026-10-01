@@ -39,7 +39,9 @@ class FocusForgeApi(
 
     suspend fun getDocument(documentId: String): BackendDocument =
         withContext(Dispatchers.IO) {
-            parseDocument(request("GET", "/api/v1/knowledge/documents/${encode(documentId)}"))
+            parseDocument(
+                JSONObject(request("GET", "/api/v1/knowledge/documents/${encode(documentId)}"))
+            )
         }
 
     suspend fun getLibrary(includeArchived: Boolean = false): List<BackendLibraryItem> =
