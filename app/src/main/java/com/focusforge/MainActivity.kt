@@ -3,8 +3,10 @@ package com.focusforge
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import android.content.Intent
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -50,6 +52,7 @@ import com.focusforge.ui.FocusForgeViewModel
 import com.focusforge.ui.IntelligenceCard
 import com.focusforge.ui.PracticeCard
 import com.focusforge.usage.UsageAccess
+import com.focusforge.usage.UsageStatsReader
 import com.focusforge.usage.openUsageAccessSettings
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -74,7 +77,9 @@ class MainActivity : ComponentActivity() {
                 val focusState by viewModel.focusState.collectAsState()
                 var selectedMinutes by remember { mutableStateOf(25) }
                 var usageGranted by remember { mutableStateOf(UsageAccess.isGranted(this@MainActivity)) }
+                var usageStats by remember { mutableStateOf(emptyList<com.focusforge.usage.AppUsage>()) }
                 var enforcementError by remember { mutableStateOf<String?>(null) }
+                var confirmEndFocus by remember { mutableStateOf(false) }
                 var backendHealth by remember { mutableStateOf<BackendHealth?>(null) }
                 var backendError by remember { mutableStateOf<String?>(null) }
                 var importBusy by remember { mutableStateOf(false) }
@@ -100,8 +105,14 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(focusState) {
-                    if (focusState == FocusState.IDLE) {
+                    if (focusState == FocusState.LOCKED) {
+                        ContextCompat.startForegroundService(
+                            this@MainActivity,
+                            Intent(this@MainActivity, com.focusforge.focus.FocusForegroundService::class.java)
+                        )
+                    } else if (focusState == FocusState.IDLE) {
                         enforcement.stopLockTask(this@MainActivity)
+                        stopService(Intent(this@MainActivity, com.focusforge.focus.FocusForegroundService::class.java))
                     }
                 }
 
@@ -247,15 +258,35 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             Text("Start focus")
                                         }
-                                    } else {
-                                        Button(
-                                            onClick = {
-                                                enforcement.stopLockTask(this@MainActivity)
-                                                viewModel.cancelFocus()
-                                            },
+                                    } else if (!confirmEndFocus) {
+                                        OutlinedButton(
+                                            onClick = { confirmEndFocus = true },
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text("End focus")
+                                        }
+                                    } else {
+                                        Text(
+                                            "Ending early will be recorded as an early exit.",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(
+                                                onClick = {
+                                                    confirmEndFocus = false
+                                                    enforcement.stopLockTask(this@MainActivity)
+                                                    viewModel.cancelFocus()
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Confirm end")
+                                            }
+                                            OutlinedButton(
+                                                onClick = { confirmEndFocus = false },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Keep focus")
+                                            }
                                         }
                                     }
                                     enforcementError?.let {
@@ -390,18 +421,28 @@ class MainActivity : ComponentActivity() {
                                         }
                                     )
                                     if (!usageGranted) {
-                                        OutlinedButton(onClick = { openUsageAccessSettings() }) {
-                                            Text("Open usage access settings")
-                                        }
-                                    } else {
-                                        OutlinedButton(
-                                            onClick = {
-                                                usageGranted = UsageAccess.isGranted(this@MainActivity)
-                                            }
-                                        ) {
-                                            Text("Refresh permission")
-                                        }
+                                    OutlinedButton(onClick = { openUsageAccessSettings() }) {
+                                        Text("Open usage access settings")
                                     }
+                                } else {
+                                    OutlinedButton(
+                                        onClick = {
+                                            usageGranted = UsageAccess.isGranted(this@MainActivity)
+                                            if (usageGranted) {
+                                                usageStats = UsageStatsReader(this@MainActivity).todayUsage()
+                                            }
+                                        }
+                                    ) {
+                                        Text("Refresh usage")
+                                    }
+                                    usageStats.take(5).forEach { usage ->
+                                        Text(
+                                            usage.packageName + " • " +
+                                                (usage.totalTimeMs / 60_000L) + " min",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
                                 }
                             }
                         }
