@@ -400,6 +400,44 @@ class KnowledgeStore:
                 ),
             )
 
+    def get_document_by_sha256(self, sha256: str) -> DocumentRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM documents WHERE sha256 = ? ORDER BY rowid DESC LIMIT 1",
+                (sha256,),
+            ).fetchone()
+        if row is None:
+            return None
+        return DocumentRecord(
+            id=row["id"],
+            filename=row["filename"],
+            sha256=row["sha256"],
+            page_count=row["page_count"],
+            status=ProcessingStatus(row["status"]),
+            error=row["error"],
+            question_count=row["question_count"],
+        )
+
+    def get_latest_job_for_document(self, document_id: str) -> ProcessingJob | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM processing_jobs
+                WHERE document_id = ?
+                ORDER BY updated_at DESC, rowid DESC
+                LIMIT 1
+                """,
+                (document_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return ProcessingJob(
+            id=row["id"],
+            document_id=row["document_id"],
+            status=ProcessingStatus(row["status"]),
+            updated_at=row["updated_at"],
+        )
+
     def get_document(self, document_id: str) -> DocumentRecord | None:
         with self._connect() as connection:
             row = connection.execute(

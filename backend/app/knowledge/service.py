@@ -71,6 +71,23 @@ class KnowledgeService:
         digest = hashlib.sha256(content).hexdigest()
         document_id = digest[:24]
         source_path = self.storage_dir / f"{document_id}.pdf"
+
+        # SHA-256 is the installation-level document identity. A repeated upload
+        # must not re-run the entire extraction pipeline when the existing source
+        # and READY record are still valid.
+        existing = self.store.get_document_by_sha256(digest)
+        if existing is not None and source_path.is_file():
+            actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+            if actual_hash == digest and existing.status is ProcessingStatus.READY:
+                return existing
+            if actual_hash == digest and existing.status in {
+                ProcessingStatus.QUEUED,
+                ProcessingStatus.EXTRACTING,
+            }:
+                pending_job = self.store.get_latest_job_for_document(existing.id)
+                if pending_job is not None:
+                    return self.process_document(pending_job.id)
+
         source_path.write_bytes(content)
 
         try:

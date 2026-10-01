@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 
 class FocusSessionManager(
@@ -19,12 +21,14 @@ class FocusSessionManager(
     private val scope: CoroutineScope,
     private val nowMs: () -> Long = { System.currentTimeMillis() }
 ) {
+    private val operationMutex = Mutex()
     private val _state = MutableStateFlow(FocusState.IDLE)
     val state: StateFlow<FocusState> = _state.asStateFlow()
 
     fun start(durationMs: Long) {
         require(durationMs > 0)
         scope.launch {
+            operationMutex.withLock {
             val existing = repository.activeSession.first()
             if (existing != null) {
                 recoverOrFinish(existing)
@@ -43,15 +47,18 @@ class FocusSessionManager(
                 ExistingWorkPolicy.REPLACE,
                 request
             )
+            }
         }
     }
 
     fun cancel() {
         scope.launch {
+            operationMutex.withLock {
             val active = repository.activeSession.first() ?: run {
                 _state.value = FocusState.IDLE
                 return@launch
             }
+            workManager.cancelUniqueWork("focus-end-" + active.id)
             when (FocusState.valueOf(active.state)) {
                 FocusState.ARMED -> repository.transition(active, FocusState.IDLE, nowMs())
                 FocusState.LOCKED -> {
@@ -61,21 +68,29 @@ class FocusSessionManager(
                 else -> _state.value = FocusState.IDLE
             }
             _state.value = FocusState.IDLE
+            }
         }
     }
 
     suspend fun recover() {
+        operationMutex.withLock {
         val active = repository.activeSession.first()
         if (active == null) {
             _state.value = FocusState.IDLE
             return
         }
         val current = FocusState.valueOf(active.state)
+        if (current == FocusState.ARMED) {
+            repository.transition(active, FocusState.IDLE, nowMs())
+            _state.value = FocusState.IDLE
+            return
+        }
         if (current == FocusState.LOCKED && repository.recoverExpired(active, nowMs()) != null) {
             _state.value = FocusState.IDLE
             return
         }
         _state.value = current
+        }
     }
 
     private suspend fun recoverOrFinish(session: FocusSession) {

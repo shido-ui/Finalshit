@@ -312,3 +312,18 @@ def test_taxonomy_rejects_invalid_graphs():
             TaxonomyNode("a", "A", "subject", "b"),
             TaxonomyNode("b", "B", "chapter", "a"),
         ])
+
+
+def test_reupload_of_same_pdf_uses_existing_ready_document(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
+
+    content = make_pdf()
+    first = service.ingest_pdf("first.pdf", content)
+    second = service.ingest_pdf("same-content.pdf", content)
+
+    assert second.id == first.id
+    assert second.sha256 == first.sha256
+    assert second.status is ProcessingStatus.READY
+    assert len(store.get_questions(first.id)) == first.question_count
+    assert len(store.get_library_items()) == 1
