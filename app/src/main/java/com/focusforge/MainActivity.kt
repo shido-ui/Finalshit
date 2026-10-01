@@ -229,6 +229,7 @@ class MainActivity : ComponentActivity() {
                                                         return@launch
                                                     }
                                                     val status = enforcement.status()
+                                                    enforcementStatus = status
                                                     if (status.deviceOwner &&
                                                         !enforcement.startLockTask(
                                                             this@MainActivity,
