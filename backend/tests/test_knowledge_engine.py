@@ -239,6 +239,62 @@ def test_tampered_source_is_rejected(tmp_path: Path):
     assert "hash does not match" in pending[-1].error
 
 
+def test_default_taxonomy_matches_jee_paper_1_hierarchy():
+    from app.knowledge.taxonomy import DEFAULT_TAXONOMY
+
+    subjects = DEFAULT_TAXONOMY.children(None)
+    assert [node.id for node in subjects] == ["chemistry", "mathematics", "physics"]
+
+    chapters = [
+        node for node in DEFAULT_TAXONOMY.all() if node.level == "chapter"
+    ]
+    assert len(chapters) == 54
+
+    physics_optics = DEFAULT_TAXONOMY.resolve_path("physics.c16.t01")
+    assert [node.id for node in physics_optics] == [
+        "physics",
+        "physics.c16",
+        "physics.c16.t01",
+    ]
+    assert physics_optics[-1].name == "Ray optics"
+
+    physics_subtree = DEFAULT_TAXONOMY.descendant_ids("physics")
+    assert "physics" in physics_subtree
+    assert "physics.c16" in physics_subtree
+    assert "physics.c16.t01" in physics_subtree
+
+
+def test_taxonomy_filter_can_select_an_entire_subject_subtree(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
+    record = service.ingest_pdf("sample.pdf", make_pdf())
+
+    questions = store.get_questions(record.id)
+    physics_topic = questions[0].model_copy(
+        update={"taxonomy_node_id": "physics.c02.t03", "classification_confidence": 0.95}
+    )
+    chemistry_chapter = questions[1].model_copy(
+        update={"taxonomy_node_id": "chemistry.c06", "classification_confidence": 0.95}
+    )
+    store.replace_questions(record.id, [physics_topic, chemistry_chapter])
+
+    physics = service.extract_questions(
+        record.id,
+        taxonomy_node_id="physics",
+        include_descendants=True,
+    )
+    assert [item.id for item in physics] == [physics_topic.id]
+
+    exact_subject = service.extract_questions(
+        record.id,
+        taxonomy_node_id="physics",
+    )
+    assert exact_subject == []
+
+    with pytest.raises(ValueError, match="Unknown taxonomy node"):
+        service.extract_questions(record.id, taxonomy_node_id="does-not-exist")
+
+
 def test_taxonomy_rejects_invalid_graphs():
     with pytest.raises(ValueError, match="Duplicate"):
         Taxonomy([
