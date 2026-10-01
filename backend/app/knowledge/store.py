@@ -407,6 +407,18 @@ class KnowledgeStore:
                 ],
             )
 
+
+    def get_question(self, question_id: str) -> QuestionCandidate | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM questions WHERE id = ?",
+                (question_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        rows = self.get_questions(row["document_id"])
+        return next((item for item in rows if item.id == question_id), None)
+
     def get_questions(
         self,
         document_id: str,
