@@ -14,6 +14,7 @@ from .models import (
     TaxonomyProposalStatus,
     TaxonomyNode,
     DocumentAsset,
+    ContentBlock,
     ProcessingJob,
     ProcessingStatus,
     Provenance,
@@ -73,6 +74,28 @@ class KnowledgeStore:
                     FOREIGN KEY(document_id) REFERENCES documents(id)
                 );
 
+
+                CREATE TABLE IF NOT EXISTS content_blocks (
+                    id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL,
+                    page_number INTEGER NOT NULL,
+                    block_index INTEGER NOT NULL,
+                    kind TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    x0 REAL NOT NULL,
+                    y0 REAL NOT NULL,
+                    x1 REAL NOT NULL,
+                    y1 REAL NOT NULL,
+                    asset_ids_json TEXT NOT NULL DEFAULT '[]',
+                    source_hash TEXT NOT NULL,
+                    extractor TEXT NOT NULL,
+                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_content_blocks_document_page
+                    ON content_blocks(document_id, page_number, block_index);
+                CREATE INDEX IF NOT EXISTS idx_content_blocks_kind
+                    ON content_blocks(document_id, kind);
 
                 CREATE TABLE IF NOT EXISTS document_assets (
                     id TEXT PRIMARY KEY,
@@ -437,6 +460,50 @@ class KnowledgeStore:
                 name=row["name"],
                 level=row["level"],
                 parent_id=row["parent_id"],
+            )
+            for row in rows
+        ]
+
+    def replace_content_blocks(self, document_id: str, blocks: list[ContentBlock]) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM content_blocks WHERE document_id = ?", (document_id,))
+            connection.executemany(
+                """
+                INSERT INTO content_blocks (
+                    id, document_id, page_number, block_index, kind, text,
+                    x0, y0, x1, y1, asset_ids_json, source_hash, extractor
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (b.id, b.document_id, b.page_number, b.block_index, b.kind, b.text,
+                     b.x0, b.y0, b.x1, b.y1, json.dumps(b.asset_ids, separators=(",", ":")),
+                     b.source_hash, b.extractor)
+                    for b in blocks
+                ],
+            )
+
+    def get_content_blocks(self, document_id: str, page: int | None = None,
+                           kind: str | None = None) -> list[ContentBlock]:
+        clauses = ["document_id = ?"]
+        params: list[object] = [document_id]
+        if page is not None:
+            clauses.append("page_number = ?")
+            params.append(page)
+        if kind is not None:
+            clauses.append("kind = ?")
+            params.append(kind)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM content_blocks WHERE {' AND '.join(clauses)} "
+                "ORDER BY page_number, block_index, id", params
+            ).fetchall()
+        return [
+            ContentBlock(
+                id=row["id"], document_id=row["document_id"], page_number=row["page_number"],
+                block_index=row["block_index"], kind=row["kind"], text=row["text"],
+                x0=row["x0"], y0=row["y0"], x1=row["x1"], y1=row["y1"],
+                asset_ids=json.loads(row["asset_ids_json"] or "[]"),
+                source_hash=row["source_hash"], extractor=row["extractor"],
             )
             for row in rows
         ]

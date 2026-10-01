@@ -34,6 +34,15 @@ class ExtractedAsset:
 
 
 @dataclass(frozen=True)
+class ExtractedContentBlock:
+    page_number: int
+    block_index: int
+    kind: str
+    text: str
+    bbox: tuple[float, float, float, float]
+
+
+@dataclass(frozen=True)
 class ExtractedQuestion:
     number: str | None
     page_start: int
@@ -148,3 +157,59 @@ def reconstruct_question_candidates(
         if len(candidate.text) >= 12
         and (OPTION_LINE.search(candidate.text) or "?" in candidate.text)
     ]
+
+
+def extract_content_blocks(path: str) -> list[ExtractedContentBlock]:
+    blocks: list[ExtractedContentBlock] = []
+    with pymupdf.open(path) as document:
+        for page_number, page in enumerate(document, start=1):
+            raw_blocks = page.get_text("blocks", sort=True)
+            next_index = 0
+            for raw in raw_blocks:
+                if len(raw) < 7 or int(raw[6] or 0) != 0:
+                    continue
+                raw_text = str(raw[4]).strip()
+                if not raw_text:
+                    continue
+
+                lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+                if not lines:
+                    continue
+
+                block_height = max(float(raw[3]) - float(raw[1]), 1.0)
+                line_height = block_height / len(lines)
+                for line_offset, text in enumerate(lines):
+                    first_line = text
+                    if QUESTION_START.match(first_line):
+                        kind = "question"
+                    elif OPTION_LINE.match(first_line):
+                        kind = "option"
+                    elif re.fullmatch(
+                        r"(?:Figure|Fig\.?|Diagram|Table)\s*\d*.*",
+                        first_line,
+                        re.IGNORECASE,
+                    ):
+                        kind = "caption"
+                    elif re.search(r"[=∫√^]", text) and len(text) <= 500:
+                        kind = "equation"
+                    elif (
+                        len(first_line) <= 100
+                        and not first_line.endswith((".", "?", ":", ";"))
+                    ):
+                        kind = "heading"
+                    else:
+                        kind = "paragraph"
+
+                    y0 = float(raw[1]) + line_offset * line_height
+                    y1 = float(raw[1]) + (line_offset + 1) * line_height
+                    blocks.append(
+                        ExtractedContentBlock(
+                            page_number=page_number,
+                            block_index=next_index,
+                            kind=kind,
+                            text=text,
+                            bbox=(float(raw[0]), y0, float(raw[2]), y1),
+                        )
+                    )
+                    next_index += 1
+    return blocks

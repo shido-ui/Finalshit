@@ -46,6 +46,22 @@ class DocumentAsset(BaseModel):
     storage_path: str
 
 
+class ContentBlock(BaseModel):
+    id: str
+    document_id: str
+    page_number: int
+    block_index: int
+    kind: str
+    text: str
+    x0: float = 0.0
+    y0: float = 0.0
+    x1: float = 0.0
+    y1: float = 0.0
+    asset_ids: list[str] = Field(default_factory=list)
+    source_hash: str
+    extractor: str
+
+
 class QuestionCandidate(BaseModel):
     id: str
     document_id: str
