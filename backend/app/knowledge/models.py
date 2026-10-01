@@ -37,6 +37,17 @@ class QuestionCandidate(BaseModel):
     page_end: int
     text: str
     number: str | None = None
+    options: dict[str, str] = Field(default_factory=dict)
+    answer: str | None = None
+    solution: str | None = None
+    has_diagram: bool = False
+    has_table: bool = False
+    exam: str | None = None
+    exam_year: int | None = Field(default=None, ge=1900, le=2100)
+    difficulty: str | None = None
+    intelligence_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    intelligence_reason: str | None = None
+    intelligence_provider: str | None = None
     taxonomy_node_id: str | None = None
     classification_status: ClassificationStatus = ClassificationStatus.UNCLASSIFIED
     classification_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
