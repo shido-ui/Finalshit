@@ -37,6 +37,37 @@ class FocusForgeApi(
             parseDocument(json)
         }
 
+    suspend fun getQuestionAssets(questionId: String): List<QuestionAsset> = withContext(Dispatchers.IO) {
+        val array = JSONArray(
+            request("GET", "/api/v1/knowledge/questions/${encode(questionId)}/assets")
+        )
+        buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                add(
+                    QuestionAsset(
+                        id = item.getString("id"),
+                        mimeType = item.getString("mime_type")
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun getAssetBytes(assetId: String): ByteArray = withContext(Dispatchers.IO) {
+        val connection = (URL(baseUrl.trimEnd('/') + "/api/v1/knowledge/assets/${encode(assetId)}").openConnection() as HttpURLConnection)
+        connection.requestMethod = "GET"
+        connection.connectTimeout = timeoutMs
+        connection.readTimeout = timeoutMs
+        val status = connection.responseCode
+        val bytes = if (status in 200..299) connection.inputStream.use { it.readBytes() } else {
+            val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            throw IOException("Asset request failed ($status): $detail")
+        }
+        connection.disconnect()
+        bytes
+    }
+
     suspend fun getDocument(documentId: String): BackendDocument = withContext(Dispatchers.IO) {
         parseDocument(
             JSONObject(request("GET", "/api/v1/knowledge/documents/${encode(documentId)}"))
@@ -110,6 +141,22 @@ class FocusForgeApi(
         )
     }
 
+    suspend fun getPracticeSession(sessionId: String): PracticeStart = withContext(Dispatchers.IO) {
+        val json = JSONObject(
+            request("GET", "/api/v1/practice/sessions/${encode(sessionId)}")
+        )
+        val sessionJson = json.getJSONObject("session")
+        val questionsJson = json.getJSONArray("questions")
+        PracticeStart(
+            session = parsePracticeSession(sessionJson),
+            questions = buildList(questionsJson.length()) {
+                for (index in 0 until questionsJson.length()) {
+                    add(parsePracticeQuestion(questionsJson.getJSONObject(index)))
+                }
+            }
+        )
+    }
+
     suspend fun submitPractice(
         sessionId: String,
         answers: Map<String, String>
@@ -145,6 +192,36 @@ class FocusForgeApi(
             questionResults = results
         )
     }
+
+    suspend fun getQuestionSolution(questionId: String): QuestionSolution = withContext(Dispatchers.IO) {
+        parseQuestionSolution(
+            JSONObject(
+                request("GET", "/api/v1/knowledge/questions/${encode(questionId)}/solution")
+            )
+        )
+    }
+
+    suspend fun generateQuestionSolution(questionId: String): QuestionSolution = withContext(Dispatchers.IO) {
+        parseQuestionSolution(
+            JSONObject(
+                request(
+                    "POST",
+                    "/api/v1/knowledge/questions/${encode(questionId)}/solution"
+                )
+            )
+        )
+    }
+
+    private fun parseQuestionSolution(json: JSONObject) = QuestionSolution(
+        answer = json.optString("answer").takeIf { it.isNotBlank() && it != "null" },
+        method = json.getString("method"),
+        steps = json.getJSONArray("steps").let { array ->
+            buildList(array.length()) { for (i in 0 until array.length()) add(array.getString(i)) }
+        },
+        finalAnswer = json.getString("final_answer"),
+        status = json.getString("status"),
+        validationReason = json.getString("validation_reason")
+    )
 
     suspend fun getWeaknesses(limit: Int = 20): List<WeaknessProfile> = withContext(Dispatchers.IO) {
         require(limit in 1..500) { "Weakness limit must be between 1 and 500" }
@@ -227,7 +304,10 @@ class FocusForgeApi(
         taxonomyNodeId = json.optString("taxonomy_node_id").takeIf { it.isNotBlank() && it != "null" },
         difficulty = json.optString("difficulty").takeIf { it.isNotBlank() && it != "null" },
         hasDiagram = json.optBoolean("has_diagram", false),
-        hasTable = json.optBoolean("has_table", false)
+        hasTable = json.optBoolean("has_table", false),
+        assetIds = json.optJSONArray("asset_ids")?.let { array ->
+            buildList(array.length()) { for (i in 0 until array.length()) add(array.getString(i)) }
+        } ?: emptyList()
     )
 
     private fun request(
@@ -275,3 +355,18 @@ class FocusForgeApi(
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 }
+
+data class QuestionAsset(
+    val id: String,
+    val mimeType: String
+)
+
+
+data class QuestionSolution(
+    val answer: String?,
+    val method: String,
+    val steps: List<String>,
+    val finalAnswer: String,
+    val status: String,
+    val validationReason: String
+)
