@@ -9,6 +9,7 @@ from app.knowledge.models import (
     DocumentRecord,
     QuestionCandidate,
     TaxonomyNode,
+    TaxonomyProposal,
 )
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
@@ -109,9 +110,9 @@ async def ingest_document(
 
 @app.post(
     "/api/v1/knowledge/documents/{document_id}/taxonomy/proposals",
-    response_model=list,
+    response_model=list[TaxonomyProposal],
 )
-def propose_document_taxonomy(document_id: str) -> list:
+def propose_document_taxonomy(document_id: str) -> list[TaxonomyProposal]:
     try:
         return knowledge_service.propose_taxonomy(document_id)
     except KeyError as exc:
@@ -128,9 +129,9 @@ def propose_document_taxonomy(document_id: str) -> list:
 
 @app.get(
     "/api/v1/knowledge/documents/{document_id}/taxonomy/proposals",
-    response_model=list,
+    response_model=list[TaxonomyProposal],
 )
-def get_document_taxonomy_proposals(document_id: str) -> list:
+def get_document_taxonomy_proposals(document_id: str) -> list[TaxonomyProposal]:
     if knowledge_service.store.get_document(document_id) is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return knowledge_service.store.get_taxonomy_proposals(document_id)
