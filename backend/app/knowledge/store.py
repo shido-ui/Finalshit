@@ -21,6 +21,7 @@ from .models import (
     QuestionCandidate,
     Solution,
     SolutionStatus,
+    PracticeSession,
 )
 
 
@@ -186,6 +187,21 @@ class KnowledgeStore:
                     ON solutions(question_id);
                 CREATE INDEX IF NOT EXISTS idx_solutions_document
                     ON solutions(document_id);
+
+                CREATE TABLE IF NOT EXISTS practice_sessions (
+                    id TEXT PRIMARY KEY,
+                    mode TEXT NOT NULL,
+                    question_ids_json TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    submitted_at TEXT,
+                    score INTEGER,
+                    total INTEGER NOT NULL,
+                    answered INTEGER NOT NULL DEFAULT 0
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_practice_sessions_started
+                    ON practice_sessions(started_at);
+
 
                 CREATE INDEX IF NOT EXISTS idx_questions_taxonomy
                     ON questions(taxonomy_node_id);
@@ -622,6 +638,54 @@ class KnowledgeStore:
             for row in rows
         ]
 
+
+
+    def save_practice_session(self, session: PracticeSession) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO practice_sessions
+                    (id, mode, question_ids_json, started_at, submitted_at, score, total, answered)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    mode=excluded.mode,
+                    question_ids_json=excluded.question_ids_json,
+                    started_at=excluded.started_at,
+                    submitted_at=excluded.submitted_at,
+                    score=excluded.score,
+                    total=excluded.total,
+                    answered=excluded.answered
+                """,
+                (
+                    session.id,
+                    session.mode,
+                    json.dumps(session.question_ids, separators=(",", ":")),
+                    session.started_at,
+                    session.submitted_at,
+                    session.score,
+                    session.total,
+                    session.answered,
+                ),
+            )
+
+    def get_practice_session(self, session_id: str) -> PracticeSession | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM practice_sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return PracticeSession(
+            id=row["id"],
+            mode=row["mode"],
+            question_ids=json.loads(row["question_ids_json"]),
+            started_at=row["started_at"],
+            submitted_at=row["submitted_at"],
+            score=row["score"],
+            total=row["total"],
+            answered=row["answered"],
+        )
 
     def save_solution(self, solution: Solution) -> None:
         with self._connect() as connection:
