@@ -227,7 +227,10 @@ class FocusForgeApi(
         taxonomyNodeId = json.optString("taxonomy_node_id").takeIf { it.isNotBlank() && it != "null" },
         difficulty = json.optString("difficulty").takeIf { it.isNotBlank() && it != "null" },
         hasDiagram = json.optBoolean("has_diagram", false),
-        hasTable = json.optBoolean("has_table", false)
+        hasTable = json.optBoolean("has_table", false),
+        assetIds = json.optJSONArray("asset_ids")?.let { array ->
+            buildList(array.length()) { for (i in 0 until array.length()) add(array.getString(i)) }
+        } ?: emptyList()
     )
 
     private fun request(
