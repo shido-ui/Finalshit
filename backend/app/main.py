@@ -228,11 +228,20 @@ def update_library_item(
 @app.post("/api/v1/practice/sessions", response_model=PracticeStartResponse)
 def start_practice(request: PracticeStartRequest) -> PracticeStartResponse:
     if request.document_id is not None:
-        questions = knowledge_service.store.get_questions(request.document_id)
-        if knowledge_service.store.get_document(request.document_id) is None:
+        document = knowledge_service.store.get_document(request.document_id)
+        if document is None:
             raise HTTPException(status_code=404, detail="Document not found")
+        library_item = knowledge_service.store.get_library_item(request.document_id)
+        if library_item is not None and library_item.archived:
+            raise HTTPException(status_code=409, detail="Archived documents are excluded from practice")
+        if request.mode == "fast" and library_item is not None and not library_item.fast_mode_enabled:
+            raise HTTPException(status_code=409, detail="Fast Mode is disabled for this document")
+        questions = knowledge_service.store.get_questions(request.document_id)
     else:
-        library = knowledge_service.store.get_library_items()
+        library = [
+            item for item in knowledge_service.store.get_library_items()
+            if not item.archived and (request.mode != "fast" or item.fast_mode_enabled)
+        ]
         questions = [
             question
             for item in library
@@ -258,6 +267,24 @@ def start_practice(request: PracticeStartRequest) -> PracticeStartResponse:
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return PracticeStartResponse(session=session, questions=public_questions)
+
+
+@app.get("/api/v1/knowledge/jobs/{job_id}", response_model=ProcessingJob)
+def get_processing_job(job_id: str) -> ProcessingJob:
+    job = knowledge_service.store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Processing job not found")
+    return job
+
+
+@app.patch("/api/v1/knowledge/questions/{question_id}/answer", response_model=QuestionCandidate)
+def set_question_answer(question_id: str, request: AnswerUpdateRequest) -> QuestionCandidate:
+    question = knowledge_service.store.get_question(question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    updated = question.model_copy(update={"answer": request.answer.strip()})
+    knowledge_service.store.save_question(updated)
+    return updated
 
 
 @app.post("/api/v1/practice/sessions/{session_id}/submit", response_model=PracticeResult)
