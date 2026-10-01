@@ -1,4 +1,4 @@
-from app.knowledge.models import ClassificationStatus, QuestionCandidate
+from app.knowledge.models import ClassificationStatus, DocumentRecord, ProcessingStatus, QuestionCandidate
 from app.knowledge.practice import PracticeService
 from app.knowledge.store import KnowledgeStore
 
@@ -128,12 +128,12 @@ def test_submission_accepts_option_label_when_ground_truth_is_option_text(tmp_pa
     service = PracticeService(store)
     question = make_question("q1", "one")
     store.save_document(
-        __import__("app.knowledge.models", fromlist=["DocumentRecord"]).DocumentRecord(
+        DocumentRecord(
             id="doc",
             filename="practice.pdf",
             sha256="hash",
             page_count=1,
-            status=__import__("app.knowledge.models", fromlist=["ProcessingStatus"]).ProcessingStatus.READY,
+            status=ProcessingStatus.READY,
         )
     )
     store.replace_questions("doc", [question])
