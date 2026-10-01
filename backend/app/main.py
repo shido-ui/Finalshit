@@ -287,6 +287,15 @@ def set_question_answer(question_id: str, request: AnswerUpdateRequest) -> Quest
     return updated
 
 
+@app.get("/api/v1/practice/sessions/{session_id}", response_model=PracticeStartResponse)
+def get_practice_session(session_id: str) -> PracticeStartResponse:
+    try:
+        session, questions = practice_service.resume_session(session_id)
+        return PracticeStartResponse(session=session, questions=questions)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Practice session not found") from exc
+
+
 @app.post("/api/v1/practice/sessions/{session_id}/submit", response_model=PracticeResult)
 def submit_practice(session_id: str, request: PracticeSubmitRequest) -> PracticeResult:
     try:
@@ -551,6 +560,14 @@ def get_document_assets(
     if knowledge_service.store.get_document(document_id) is None:
         raise HTTPException(status_code=404, detail="Document not found")
     return knowledge_service.store.get_document_assets(document_id, page=page)
+
+
+@app.get("/api/v1/knowledge/questions/{question_id}/assets", response_model=list[DocumentAsset])
+def get_question_assets(question_id: str) -> list[DocumentAsset]:
+    question = knowledge_service.store.get_question(question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return knowledge_service.store.get_question_assets(question_id)
 
 
 @app.get("/api/v1/knowledge/assets/{asset_id}")
