@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import uuid
 from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
@@ -87,7 +88,7 @@ class PracticeService:
             raise ValueError("No eligible questions are available")
 
         session = PracticeSession(
-            id=f"practice-{self.store.now().replace(':', '').replace('+', '-')}",
+            id=f"practice-{uuid.uuid4()}",
             mode=mode,
             question_ids=[question.id for question in selected],
             started_at=self.store.now(),
@@ -129,11 +130,23 @@ class PracticeService:
 
         results: dict[str, bool] = {}
         for question_id, question in question_map.items():
-            submitted = answers.get(question_id)
-            expected = (question.answer or "").strip().upper()
-            actual = (submitted or "").strip().upper()
-            if expected and actual:
-                results[question_id] = actual == expected
+            submitted = (answers.get(question_id) or "").strip()
+            expected = (question.answer or "").strip()
+            if not submitted or not expected:
+                continue
+
+            actual = submitted.casefold()
+            expected_normalized = expected.casefold()
+            if actual == expected_normalized:
+                results[question_id] = True
+                continue
+
+            expected_label = expected.upper()
+            if expected_label in question.options:
+                results[question_id] = actual == question.options[expected_label].strip().casefold()
+                continue
+
+            results[question_id] = False
 
         correct = sum(results.values())
         answered = sum(1 for question_id in session.question_ids if answers.get(question_id, "").strip())
