@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
+
 import pymupdf
 
 
@@ -108,7 +109,7 @@ def reconstruct_question_candidates(
 
     def flush(end_page: int) -> None:
         nonlocal current_number, current_start, current_lines
-        text = "\\n".join(current_lines).strip()
+        text = "\n".join(current_lines).strip()
         if current_start is not None and text:
             candidates.append(
                 ExtractedQuestion(
