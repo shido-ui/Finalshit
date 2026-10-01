@@ -33,7 +33,7 @@ class GeminiSolutionProvider:
     name = "gemini-solution-v1"
 
     def __init__(self, model: str | None = None, timeout_seconds: int = 30) -> None:
-        self.model = model or os.getenv("GEMINI_SOLUTION_MODEL", "gemini-3-flash")
+        self.model = model or os.getenv("GEMINI_SOLUTION_MODEL", os.getenv("GEMINI_MODEL", "gemini-3-flash"))
         self.timeout_seconds = timeout_seconds
 
     def generate(self, question: QuestionCandidate, source_pages: dict[int, str]) -> SolutionCandidate:
