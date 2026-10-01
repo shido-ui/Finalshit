@@ -15,6 +15,7 @@ from .extractor import (
     reconstruct_question_candidates,
 )
 from .question_intelligence import HybridQuestionIntelligence
+from .solution_engine import SolutionEngine
 from .models import (
     ClassificationStatus,
     DocumentAsset,
@@ -27,6 +28,7 @@ from .models import (
     TaxonomyProposal,
     TaxonomyProposalResolution,
     TaxonomyProposalStatus,
+    Solution,
 )
 from .store import KnowledgeStore
 from .taxonomy import DEFAULT_TAXONOMY, Taxonomy
@@ -46,6 +48,7 @@ class KnowledgeService:
         classifier: QuestionClassifier = DEFAULT_CLASSIFIER,
         taxonomy_proposal_provider: TaxonomyProposalProvider | None = None,
         question_intelligence: HybridQuestionIntelligence | None = None,
+        solution_engine: SolutionEngine | None = None,
     ) -> None:
         self.store = store
         self.storage_dir = Path(storage_dir)
@@ -55,6 +58,7 @@ class KnowledgeService:
         self.classifier = classifier
         self.taxonomy_proposal_provider = taxonomy_proposal_provider
         self.question_intelligence = question_intelligence
+        self.solution_engine = solution_engine
 
     def ingest_pdf(self, filename: str, content: bytes) -> DocumentRecord:
         if not content:
@@ -330,6 +334,55 @@ class KnowledgeService:
                 )
             )
             raise
+
+
+    def generate_solution(self, question_id: str) -> Solution:
+        if self.solution_engine is None:
+            raise RuntimeError("Solution engine is not configured")
+
+        with self.store._connect() as connection:
+            row = connection.execute(
+                "SELECT document_id FROM questions WHERE id = ?",
+                (question_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(question_id)
+
+        questions = self.store.get_questions(row["document_id"])
+        question = next((item for item in questions if item.id == question_id), None)
+        if question is None:
+            raise KeyError(question_id)
+
+        document = self.store.get_document(question.document_id)
+        if document is None:
+            raise KeyError(question.document_id)
+
+        source_path = self.storage_dir / f"{document.id}.pdf"
+        if not source_path.is_file():
+            raise FileNotFoundError(document.id)
+
+        actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        if actual_hash != document.sha256:
+            raise ValueError("Source PDF hash does not match recorded provenance")
+
+        pages = extract_document(str(source_path))
+        if len(pages) != document.page_count:
+            raise ValueError("Source PDF page count does not match recorded metadata")
+
+        source_pages = {
+            page.page_number: page.text
+            for page in pages
+            if question.page_start <= page.page_number <= question.page_end
+        }
+        if not source_pages:
+            raise ValueError("No source pages are available for this question")
+
+        solution = self.solution_engine.generate(question, source_pages)
+        self.store.save_solution(solution)
+        return solution
+
+    def get_solution(self, question_id: str) -> Solution | None:
+        return self.store.get_solution(question_id)
 
     def resume_pending(self) -> list[DocumentRecord]:
         results: list[DocumentRecord] = []
