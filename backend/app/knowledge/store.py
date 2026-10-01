@@ -217,16 +217,19 @@ class KnowledgeStore:
     def get_questions(
         self,
         document_id: str,
-        taxonomy_node_id: str | None = None,
+        taxonomy_node_ids: list[str] | None = None,
         page: int | None = None,
         classification_status: ClassificationStatus | None = None,
     ) -> list[QuestionCandidate]:
         clauses = ["document_id = ?"]
         params: list[object] = [document_id]
 
-        if taxonomy_node_id is not None:
-            clauses.append("taxonomy_node_id = ?")
-            params.append(taxonomy_node_id)
+        if taxonomy_node_ids is not None:
+            if not taxonomy_node_ids:
+                return []
+            placeholders = ",".join("?" for _ in taxonomy_node_ids)
+            clauses.append(f"taxonomy_node_id IN ({placeholders})")
+            params.extend(taxonomy_node_ids)
         if page is not None:
             clauses.append("page_start <= ? AND page_end >= ?")
             params.extend([page, page])
