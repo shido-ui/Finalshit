@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -33,6 +34,20 @@ from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
 
 app = FastAPI(title="FocusForge AI Gateway", version="0.1.0")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Cache-Control", "no-store")
+    request_id = request.headers.get("X-Request-ID", "").strip()
+    if not request_id or len(request_id) > 128 or any(ord(ch) < 32 or ord(ch) == 127 for ch in request_id):
+        request_id = os.urandom(8).hex()
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 _data_dir = Path(os.getenv("FOCUSFORGE_DATA_DIR", "data"))
 intelligence_store = KnowledgeStore(_data_dir / "knowledge.db")

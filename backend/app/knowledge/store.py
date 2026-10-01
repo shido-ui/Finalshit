@@ -295,6 +295,14 @@ class KnowledgeStore:
                 "CREATE INDEX IF NOT EXISTS idx_questions_classification "
                 "ON questions(classification_status)"
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_questions_taxonomy_status_page "
+                "ON questions(taxonomy_node_id, classification_status, page_start)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_questions_document_status_page "
+                "ON questions(document_id, classification_status, page_start)"
+            )
 
     @staticmethod
     def _migrate_questions(connection: sqlite3.Connection) -> None:
@@ -328,6 +336,9 @@ class KnowledgeStore:
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 5000")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
         return connection
 
     @staticmethod
