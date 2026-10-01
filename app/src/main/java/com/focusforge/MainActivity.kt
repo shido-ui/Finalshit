@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
                 var usageGranted by remember { mutableStateOf(UsageAccess.isGranted(this@MainActivity)) }
                 var usageStats by remember { mutableStateOf(emptyList<com.focusforge.usage.AppUsage>()) }
                 var enforcementError by remember { mutableStateOf<String?>(null) }
+                var confirmEndFocus by remember { mutableStateOf(false) }
                 var backendHealth by remember { mutableStateOf<BackendHealth?>(null) }
                 var backendError by remember { mutableStateOf<String?>(null) }
                 var importBusy by remember { mutableStateOf(false) }
@@ -257,15 +258,35 @@ class MainActivity : ComponentActivity() {
                                         ) {
                                             Text("Start focus")
                                         }
-                                    } else {
-                                        Button(
-                                            onClick = {
-                                                enforcement.stopLockTask(this@MainActivity)
-                                                viewModel.cancelFocus()
-                                            },
+                                    } else if (!confirmEndFocus) {
+                                        OutlinedButton(
+                                            onClick = { confirmEndFocus = true },
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Text("End focus")
+                                        }
+                                    } else {
+                                        Text(
+                                            "Ending early will be recorded as an early exit.",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(
+                                                onClick = {
+                                                    confirmEndFocus = false
+                                                    enforcement.stopLockTask(this@MainActivity)
+                                                    viewModel.cancelFocus()
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Confirm end")
+                                            }
+                                            OutlinedButton(
+                                                onClick = { confirmEndFocus = false },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Keep focus")
+                                            }
                                         }
                                     }
                                     enforcementError?.let {
