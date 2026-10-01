@@ -45,6 +45,7 @@ import com.focusforge.focus.FocusState
 import com.focusforge.launcher.AppCatalog
 import com.focusforge.launcher.LaunchableApp
 import com.focusforge.ui.FocusForgeViewModel
+import com.focusforge.ui.IntelligenceCard
 import com.focusforge.ui.PracticeCard
 import com.focusforge.usage.UsageAccess
 import com.focusforge.usage.openUsageAccessSettings
@@ -74,6 +75,7 @@ class MainActivity : ComponentActivity() {
                 var importBusy by remember { mutableStateOf(false) }
                 var importError by remember { mutableStateOf<String?>(null) }
                 var lastImported by remember { mutableStateOf<BackendDocument?>(null) }
+                var adaptiveLaunchToken by remember { mutableStateOf(0) }
                 val apps = remember { catalog.installedLaunchableApps() }
                 var allowedPackages by remember { mutableStateOf(setOf(packageName)) }
                 val enforcementStatus = remember { enforcement.status() }
@@ -300,9 +302,15 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        IntelligenceCard(
+                            repository = backendRepository,
+                            onStartAdaptive = { adaptiveLaunchToken += 1 }
+                        )
+
                         PracticeCard(
                             repository = backendRepository,
-                            libraryItems = libraryItems
+                            libraryItems = libraryItems,
+                            adaptiveLaunchToken = adaptiveLaunchToken
                         )
 
                         Card(Modifier.fillMaxWidth()) {
