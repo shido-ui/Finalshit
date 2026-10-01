@@ -1,3 +1,5 @@
+import sqlite3
+
 import pymupdf
 
 from app.knowledge.classifier import KeywordTaxonomyClassifier
@@ -97,3 +99,36 @@ def test_service_persists_classification_state(tmp_path):
     )
     assert all(0.0 <= item.classification_confidence <= 1.0 for item in questions)
     assert all(item.classification_reason for item in questions)
+
+
+def test_existing_question_schema_migrates_before_new_index(tmp_path):
+    database = tmp_path / "legacy.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE questions (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                page_start INTEGER NOT NULL,
+                page_end INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                number TEXT,
+                taxonomy_node_id TEXT,
+                classification_confidence REAL NOT NULL DEFAULT 0.0,
+                provenance_json TEXT NOT NULL
+            )
+            """
+        )
+
+    store = KnowledgeStore(database)
+    columns = {
+        row["name"]
+        for row in store._connect().execute("PRAGMA table_info(questions)").fetchall()
+    }
+
+    assert "classification_status" in columns
+    assert "classification_reason" in columns
+    assert store._connect().execute(
+        "SELECT name FROM sqlite_master WHERE type='index' "
+        "AND name='idx_questions_classification'"
+    ).fetchone() is not None
