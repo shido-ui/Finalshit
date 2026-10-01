@@ -48,3 +48,27 @@ def test_question_reconstruction_does_not_extend_previous_question_to_next_page(
     questions = reconstruct_question_candidates(pages)
 
     assert [(q.page_start, q.page_end) for q in questions] == [(1, 1), (2, 2)]
+
+
+def test_numbered_options_do_not_start_new_questions():
+    pages = [
+        PageExtraction(
+            page_number=1,
+            text="1. Which value is correct?\n1) 4\n2) 5\n3) 6\n4) 7",
+            image_count=0,
+            block_count=1,
+        ),
+        PageExtraction(
+            page_number=2,
+            text="2. Find the integer value of x.\n12",
+            image_count=0,
+            block_count=1,
+        ),
+    ]
+
+    questions = reconstruct_question_candidates(pages)
+
+    assert len(questions) == 2
+    assert questions[0].number == "1"
+    assert "2) 5" in questions[0].text
+    assert questions[1].number == "2"

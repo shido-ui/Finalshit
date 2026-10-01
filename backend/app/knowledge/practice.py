@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import math
 import random
+import re
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from pydantic import BaseModel, Field
 
@@ -55,6 +58,44 @@ class PracticeSelection:
     mode: str
 
 
+def _normalize_answer(value: str) -> str:
+    value = re.sub(r"\s+", " ", value.strip().casefold())
+    value = value.strip("[](){} ")
+    return value
+
+
+def _numeric_value(value: str) -> Decimal | None:
+    normalized = _normalize_answer(value).replace(",", "")
+    try:
+        number = Decimal(normalized)
+    except InvalidOperation:
+        return None
+    return number if number.is_finite() else None
+
+
+def _answer_matches(submitted: str, expected: str, tolerance: Decimal = Decimal("0.000001")) -> bool:
+    submitted_normalized = _normalize_answer(submitted)
+    expected_normalized = _normalize_answer(expected)
+    if submitted_normalized == expected_normalized:
+        return True
+
+    submitted_number = _numeric_value(submitted_normalized)
+    expected_number = _numeric_value(expected_normalized)
+    if submitted_number is not None and expected_number is not None:
+        return abs(submitted_number - expected_number) <= tolerance
+
+    def as_set(value: str) -> set[str]:
+        return {
+            _normalize_answer(part)
+            for part in re.split(r"\s*[,;]\s*", value)
+            if _normalize_answer(part)
+        }
+
+    submitted_set = as_set(submitted_normalized)
+    expected_set = as_set(expected_normalized)
+    return bool(submitted_set and expected_set and submitted_set == expected_set)
+
+
 class PracticeService:
     def __init__(self, store: KnowledgeStore, intelligence: IntelligenceService | None = None) -> None:
         self.store = store
@@ -67,9 +108,13 @@ class PracticeService:
         seed: int | None,
         mode: str,
     ) -> list[QuestionCandidate]:
+        # A practice question without a known ground-truth answer cannot be graded
+        # safely. Keep it out of the practice pool rather than treating it as wrong.
         eligible = [
-            question for question in questions
+            question
+            for question in questions
             if question.classification_status is not ClassificationStatus.QUARANTINED
+            and bool((question.answer or "").strip())
         ]
         if mode == PracticeMode.ADAPTIVE:
             return self.intelligence.adaptive_rank(eligible)[:limit]
@@ -91,7 +136,7 @@ class PracticeService:
 
         selected = self._select(questions, limit, seed, mode)
         if not selected:
-            raise ValueError("No eligible questions are available")
+            raise ValueError("No scorable questions are available")
 
         session = PracticeSession(
             id=f"practice-{uuid.uuid4()}",
@@ -128,7 +173,7 @@ class PracticeService:
         if session.submitted_at is not None:
             raise ValueError("Practice session is already submitted")
 
-        question_map = {}
+        question_map: dict[str, QuestionCandidate] = {}
         for question_id in session.question_ids:
             question = self.store.get_question(question_id)
             if question is not None:
@@ -141,42 +186,42 @@ class PracticeService:
             if not submitted or not expected:
                 continue
 
-            actual = submitted.casefold()
-            expected_normalized = expected.casefold()
-            if actual == expected_normalized:
+            if _answer_matches(submitted, expected):
                 results[question_id] = True
                 continue
 
             expected_label = expected.upper()
             if expected_label in question.options:
-                results[question_id] = actual == question.options[expected_label].strip().casefold()
+                results[question_id] = _answer_matches(
+                    submitted, question.options[expected_label]
+                )
                 continue
 
             submitted_label = submitted.upper()
             if submitted_label in question.options:
-                results[question_id] = (
-                    question.options[submitted_label].strip().casefold() == expected_normalized
+                results[question_id] = _answer_matches(
+                    question.options[submitted_label], expected
                 )
                 continue
 
             results[question_id] = False
 
-        for question_id in session.question_ids:
-            question = question_map.get(question_id)
-            if question is None:
-                continue
-            submitted = answers.get(question_id)
-            if not (submitted or "").strip():
-                continue
+        # Only graded answers enter the weakness/spaced-repetition model.
+        for question_id, correct in results.items():
+            question = question_map[question_id]
+            submitted = (answers.get(question_id) or "").strip()
             self.intelligence.record_outcome(
                 question=question,
                 session_id=session.id,
                 submitted_answer=submitted,
-                correct=results.get(question_id, False),
+                correct=correct,
             )
 
         correct = sum(results.values())
-        answered = sum(1 for question_id in session.question_ids if answers.get(question_id, "").strip())
+        answered = sum(
+            1 for question_id in session.question_ids
+            if answers.get(question_id, "").strip()
+        )
         total = len(session.question_ids)
         percentage = round((correct / total) * 100, 2) if total else 0.0
         completed = session.model_copy(

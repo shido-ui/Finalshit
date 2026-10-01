@@ -62,7 +62,7 @@ class KnowledgeService:
         self.question_intelligence = question_intelligence
         self.solution_engine = solution_engine
 
-    def ingest_pdf(self, filename: str, content: bytes) -> DocumentRecord:
+    def ingest_pdf(self, filename: str, content: bytes, *, process: bool = True) -> DocumentRecord:
         if not content:
             raise ValueError("PDF content is empty")
         if not filename.lower().endswith(".pdf"):
@@ -100,6 +100,8 @@ class KnowledgeService:
             updated_at=self.store.now(),
         )
         self.store.save_job(job)
+        if not process:
+            return record
         return self.process_document(job.id)
 
     @staticmethod
@@ -160,8 +162,12 @@ class KnowledgeService:
         extracted = reconstruct_question_candidates(pages)
         questions: list[QuestionCandidate] = []
         for index, item in enumerate(extracted):
+            normalized_text = " ".join(item.text.casefold().split())
+            question_digest = hashlib.sha256(normalized_text.encode("utf-8")).hexdigest()[:20]
             question = QuestionCandidate(
-                id=f"{document.id}-{index + 1}",
+                # Stable across re-ingestion as long as the extracted question text
+                # remains the same; page position changes no longer relabel history.
+                id=f"{document.id}-q-{question_digest}",
                 document_id=document.id,
                 page_start=item.page_start,
                 page_end=item.page_end,

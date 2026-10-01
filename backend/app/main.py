@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
 from fastapi.responses import FileResponse
 from dotenv import load_dotenv
@@ -367,6 +367,7 @@ def taxonomy() -> list[TaxonomyNode]:
 @app.post("/api/v1/knowledge/documents", response_model=DocumentRecord)
 async def ingest_document(
     request: Request,
+    background_tasks: BackgroundTasks,
     filename: str = Query(min_length=1, max_length=255),
 ) -> DocumentRecord:
     content_type = request.headers.get("content-type", "").split(";", 1)[0].lower()
@@ -391,7 +392,13 @@ async def ingest_document(
 
     content = b"".join(chunks)
     try:
-        return knowledge_service.ingest_pdf(filename, content)
+        record = knowledge_service.ingest_pdf(filename, content, process=False)
+        job = knowledge_service.store.pending_jobs()
+        matching = next((item for item in job if item.document_id == record.id), None)
+        if matching is None:
+            raise HTTPException(status_code=500, detail="Ingestion job was not created")
+        background_tasks.add_task(knowledge_service.process_document, matching.id)
+        return record
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

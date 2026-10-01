@@ -130,208 +130,247 @@ class MainActivity : ComponentActivity() {
                 }
 
                 Surface(Modifier.fillMaxSize()) {
-                    Column(
-                        Modifier.fillMaxSize().padding(20.dp),
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Text("FocusForge", style = MaterialTheme.typography.headlineLarge)
-                        Text(
-                            when (focusState) {
-                                FocusState.IDLE -> "Ready for a focused study session."
-                                FocusState.ARMED -> "Preparing your focus session."
-                                FocusState.LOCKED -> "Focus session active."
-                                FocusState.ENDING -> "Finishing your focus session."
-                            }
-                        )
-
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Backend", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    when {
-                                        backendHealth != null -> "Connected: ${backendHealth!!.service}"
-                                        backendError != null -> "Offline: ${backendError}"
-                                        else -> "Checking backend…"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                OutlinedButton(
-                                    enabled = !importBusy,
-                                    onClick = { picker.launch(arrayOf("application/pdf")) }
-                                ) {
-                                    Text(if (importBusy) "Importing PDF…" else "Import PDF")
+                        item {
+                            Text("FocusForge", style = MaterialTheme.typography.headlineLarge)
+                        }
+                        item {
+                            Text(
+                                when (focusState) {
+                                    FocusState.IDLE -> "Ready for a focused study session."
+                                    FocusState.ARMED -> "Preparing your focus session."
+                                    FocusState.LOCKED -> "Focus session active."
+                                    FocusState.ENDING -> "Finishing your focus session."
                                 }
-                                lastImported?.let { document ->
+                            )
+                        }
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Backend", style = MaterialTheme.typography.titleMedium)
                                     Text(
-                                        "${document.filename} • ${document.status} • ${document.questionCount} questions",
+                                        when {
+                                            backendHealth != null -> "Connected: " + backendHealth!!.service
+                                            backendError != null -> "Offline: " + backendError
+                                            else -> "Checking backend…"
+                                        },
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    OutlinedButton(
+                                        enabled = !importBusy,
+                                        onClick = { picker.launch(arrayOf("application/pdf")) }
+                                    ) {
+                                        Text(if (importBusy) "Importing PDF…" else "Import PDF")
+                                    }
+                                    lastImported?.let { document ->
+                                        Text(
+                                            document.filename + " • " + document.status +
+                                                " • " + document.questionCount + " questions",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    importError?.let {
+                                        Text(it, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Session", style = MaterialTheme.typography.titleMedium)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        listOf(25, 50, 90).forEach { minutes ->
+                                            OutlinedButton(onClick = { selectedMinutes = minutes }) {
+                                                Text(minutes.toString() + "m")
+                                            }
+                                        }
+                                    }
+                                    Spacer(Modifier.height(2.dp))
+                                    if (focusState == FocusState.IDLE) {
+                                        Button(
+                                            onClick = {
+                                                enforcementError = null
+                                                scope.launch {
+                                                    val sessionStarted = viewModel.startFocus(selectedMinutes)
+                                                    if (!sessionStarted) {
+                                                        enforcementError = "A focus session is already active."
+                                                        return@launch
+                                                    }
+                                                    val status = enforcement.status()
+                                                    if (status.deviceOwner &&
+                                                        !enforcement.startLockTask(
+                                                            this@MainActivity,
+                                                            allowedPackages
+                                                        )
+                                                    ) {
+                                                        viewModel.cancelFocus()
+                                                        enforcementError =
+                                                            "Focus could not start because device-owner enforcement could not be enabled."
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Start focus")
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = {
+                                                enforcement.stopLockTask(this@MainActivity)
+                                                viewModel.cancelFocus()
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("End focus")
+                                        }
+                                    }
+                                    enforcementError?.let {
+                                        Text(it, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    Text(
+                                        if (enforcement.status().deviceOwner) {
+                                            "Dedicated-device enforcement available."
+                                        } else {
+                                            "Standard mode records the session; app blocking requires supported device-owner provisioning."
+                                        },
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
-                                importError?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall)
-                                }
                             }
                         }
-
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Session", style = MaterialTheme.typography.titleMedium)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    listOf(25, 50, 90).forEach { minutes ->
-                                        OutlinedButton(onClick = { selectedMinutes = minutes }) {
-                                            Text("${minutes}m")
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Allowed apps", style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        "Select apps that may remain available during a device-owner lock-task session.",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxWidth().height(220.dp),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        items(apps, key = { it.packageName }) { app ->
+                                            AppRow(
+                                                app = app,
+                                                checked = allowedPackages.contains(app.packageName),
+                                                onCheckedChange = { checked ->
+                                                    allowedPackages = if (checked) {
+                                                        allowedPackages + app.packageName
+                                                    } else {
+                                                        allowedPackages - app.packageName
+                                                    }
+                                                }
+                                            )
                                         }
                                     }
                                 }
-                                Spacer(Modifier.height(2.dp))
-                                if (focusState == FocusState.IDLE) {
-                                    Button(
-                                        onClick = {
-                                            enforcementError = null
-                                            val enforcementStarted =
-                                                !enforcementStatus.deviceOwner ||
-                                                    enforcement.startLockTask(this@MainActivity, allowedPackages)
-                                            if (enforcementStarted) {
-                                                viewModel.startFocus(selectedMinutes)
-                                            } else {
-                                                enforcementError =
-                                                    "Focus could not start because device-owner enforcement could not be enabled."
-                                            }
-                                        },
-                                        Modifier.fillMaxWidth()
-                                    ) { Text("Start focus") }
-                                } else {
-                                    Button(
-                                        onClick = {
-                                            enforcement.stopLockTask(this@MainActivity)
-                                            viewModel.cancelFocus()
-                                        },
-                                        Modifier.fillMaxWidth()
-                                    ) { Text("End focus") }
-                                }
-                                enforcementError?.let {
-                                    Text(it, style = MaterialTheme.typography.bodySmall)
-                                }
-                                Text(
-                                    if (enforcementStatus.deviceOwner) {
-                                        "Dedicated-device enforcement available."
+                            }
+                        }
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Library", style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        "Local study material stays available on-device.",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    if (libraryItems.isEmpty()) {
+                                        Text("No documents in the local library yet.")
                                     } else {
-                                        "Standard mode records the session; app blocking requires supported device-owner provisioning."
-                                    },
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Allowed apps", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "Select apps that may remain available during a device-owner lock-task session.",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxWidth().height(220.dp),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                                ) {
-                                    items(apps, key = { it.packageName }) { app ->
-                                        AppRow(
-                                            app = app,
-                                            checked = allowedPackages.contains(app.packageName),
-                                            onCheckedChange = { checked ->
-                                                allowedPackages = if (checked) {
-                                                    allowedPackages + app.packageName
-                                                } else {
-                                                    allowedPackages - app.packageName
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Library", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "Local study material stays available on-device.",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                if (libraryItems.isEmpty()) {
-                                    Text("No documents in the local library yet.")
-                                } else {
-                                    libraryItems.take(8).forEach { item ->
-                                        LibraryRow(
-                                            item = item,
-                                            onPinned = {
-                                                scope.launch {
-                                                    val value = !item.pinned
-                                                    runCatching {
-                                                        backendRepository.updateLibrary(item.documentId, pinned = value)
-                                                    }
-                                                    libraryRepository.setPinned(item.documentId, value)
-                                                }
-                                            },
-                                            onFastMode = {
-                                                scope.launch {
-                                                    val value = !item.fastModeEnabled
-                                                    runCatching {
-                                                        backendRepository.updateLibrary(
-                                                            item.documentId,
-                                                            fastModeEnabled = value
+                                        libraryItems.take(8).forEach { libraryItem ->
+                                            LibraryRow(
+                                                item = libraryItem,
+                                                onPinned = {
+                                                    scope.launch {
+                                                        val value = !libraryItem.pinned
+                                                        runCatching {
+                                                            backendRepository.updateLibrary(
+                                                                libraryItem.documentId,
+                                                                pinned = value
+                                                            )
+                                                        }
+                                                        libraryRepository.setPinned(
+                                                            libraryItem.documentId,
+                                                            value
                                                         )
                                                     }
-                                                    libraryRepository.setFastMode(item.documentId, value)
-                                                }
-                                            },
-                                            onArchive = {
-                                                scope.launch {
-                                                    runCatching {
-                                                        backendRepository.updateLibrary(
-                                                            item.documentId,
-                                                            archived = true
+                                                },
+                                                onFastMode = {
+                                                    scope.launch {
+                                                        val value = !libraryItem.fastModeEnabled
+                                                        runCatching {
+                                                            backendRepository.updateLibrary(
+                                                                libraryItem.documentId,
+                                                                fastModeEnabled = value
+                                                            )
+                                                        }
+                                                        libraryRepository.setFastMode(
+                                                            libraryItem.documentId,
+                                                            value
                                                         )
                                                     }
-                                                    libraryRepository.setArchived(item.documentId, true)
+                                                },
+                                                onArchive = {
+                                                    scope.launch {
+                                                        runCatching {
+                                                            backendRepository.updateLibrary(
+                                                                libraryItem.documentId,
+                                                                archived = true
+                                                            )
+                                                        }
+                                                        libraryRepository.setArchived(
+                                                            libraryItem.documentId,
+                                                            true
+                                                        )
+                                                    }
                                                 }
-                                            }
-                                        )
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
-
-                        IntelligenceCard(
-                            repository = backendRepository,
-                            onStartAdaptive = { adaptiveLaunchToken += 1 }
-                        )
-
-                        PracticeCard(
-                            repository = backendRepository,
-                            libraryItems = libraryItems,
-                            adaptiveLaunchToken = adaptiveLaunchToken
-                        )
-
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Usage access", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    if (usageGranted) {
-                                        "Granted — FocusForge can read app usage for analytics."
+                        item {
+                            IntelligenceCard(
+                                repository = backendRepository,
+                                onStartAdaptive = { adaptiveLaunchToken += 1 }
+                            )
+                        }
+                        item {
+                            PracticeCard(
+                                repository = backendRepository,
+                                libraryItems = libraryItems,
+                                adaptiveLaunchToken = adaptiveLaunchToken
+                            )
+                        }
+                        item {
+                            Card(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Usage access", style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        if (usageGranted) {
+                                            "Granted — FocusForge can read app usage for analytics."
+                                        } else {
+                                            "Not granted — app-usage analytics are unavailable."
+                                        }
+                                    )
+                                    if (!usageGranted) {
+                                        OutlinedButton(onClick = { openUsageAccessSettings() }) {
+                                            Text("Open usage access settings")
+                                        }
                                     } else {
-                                        "Not granted — app-usage analytics are unavailable."
-                                    }
-                                )
-                                if (!usageGranted) {
-                                    OutlinedButton(onClick = { openUsageAccessSettings() }) {
-                                        Text("Open usage access settings")
-                                    }
-                                } else {
-                                    OutlinedButton(onClick = {
-                                        usageGranted = UsageAccess.isGranted(this@MainActivity)
-                                    }) {
-                                        Text("Refresh permission")
+                                        OutlinedButton(
+                                            onClick = {
+                                                usageGranted = UsageAccess.isGranted(this@MainActivity)
+                                            }
+                                        ) {
+                                            Text("Refresh permission")
+                                        }
                                     }
                                 }
                             }
