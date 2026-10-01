@@ -78,3 +78,13 @@ class TaxonomyProposal(BaseModel):
     evidence: str
     status: TaxonomyProposalStatus = TaxonomyProposalStatus.PENDING
     provider: str
+    resolved_node_id: str | None = None
+    resolution_reason: str | None = None
+
+
+class TaxonomyProposalResolution(BaseModel):
+    proposal_id: str
+    status: TaxonomyProposalStatus
+    resolved_node_id: str | None = None
+    created: bool = False
+    reason: str
