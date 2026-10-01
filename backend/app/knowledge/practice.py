@@ -7,12 +7,14 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 from .models import ClassificationStatus, QuestionCandidate
+from .intelligence import IntelligenceService
 from .store import KnowledgeStore
 
 
 class PracticeMode(str):
     FAST = "fast"
     TEST = "test"
+    ADAPTIVE = "adaptive"
 
 
 class PracticeQuestion(BaseModel):
@@ -54,19 +56,23 @@ class PracticeSelection:
 
 
 class PracticeService:
-    def __init__(self, store: KnowledgeStore) -> None:
+    def __init__(self, store: KnowledgeStore, intelligence: IntelligenceService | None = None) -> None:
         self.store = store
+        self.intelligence = intelligence or IntelligenceService(store)
 
     def _select(
         self,
         questions: list[QuestionCandidate],
         limit: int,
         seed: int | None,
+        mode: str,
     ) -> list[QuestionCandidate]:
         eligible = [
             question for question in questions
             if question.classification_status is not ClassificationStatus.QUARANTINED
         ]
+        if mode == PracticeMode.ADAPTIVE:
+            return self.intelligence.adaptive_rank(eligible)[:limit]
         rng = random.Random(seed)
         rng.shuffle(eligible)
         return eligible[:limit]
@@ -78,12 +84,12 @@ class PracticeService:
         limit: int,
         seed: int | None = None,
     ) -> tuple[PracticeSession, list[PracticeQuestion]]:
-        if mode not in {PracticeMode.FAST, PracticeMode.TEST}:
+        if mode not in {PracticeMode.FAST, PracticeMode.TEST, PracticeMode.ADAPTIVE}:
             raise ValueError("Unsupported practice mode")
         if limit < 1 or limit > 100:
             raise ValueError("Practice limit must be between 1 and 100")
 
-        selected = self._select(questions, limit, seed)
+        selected = self._select(questions, limit, seed, mode)
         if not selected:
             raise ValueError("No eligible questions are available")
 
@@ -154,6 +160,20 @@ class PracticeService:
                 continue
 
             results[question_id] = False
+
+        for question_id in session.question_ids:
+            question = question_map.get(question_id)
+            if question is None:
+                continue
+            submitted = answers.get(question_id)
+            if not (submitted or "").strip():
+                continue
+            self.intelligence.record_outcome(
+                question=question,
+                session_id=session.id,
+                submitted_answer=submitted,
+                correct=results.get(question_id, False),
+            )
 
         correct = sum(results.values())
         answered = sum(1 for question_id in session.question_ids if answers.get(question_id, "").strip())

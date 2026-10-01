@@ -115,6 +115,45 @@ class Solution(BaseModel):
 
 
 
+
+class MistakeRecord(BaseModel):
+    id: str
+    question_id: str
+    session_id: str
+    submitted_answer: str | None = None
+    expected_answer: str | None = None
+    taxonomy_node_id: str | None = None
+    created_at: str
+
+
+class WeaknessProfile(BaseModel):
+    taxonomy_node_id: str
+    attempts: int = Field(default=0, ge=0)
+    correct: int = Field(default=0, ge=0)
+    incorrect: int = Field(default=0, ge=0)
+    accuracy: float = Field(default=0.0, ge=0.0, le=1.0)
+    mastery: float = Field(default=0.0, ge=0.0, le=1.0)
+    last_attempt_at: str | None = None
+
+
+class ReviewState(BaseModel):
+    question_id: str
+    repetitions: int = Field(default=0, ge=0)
+    interval_days: int = Field(default=0, ge=0)
+    ease_factor: float = Field(default=2.5, ge=1.3, le=4.0)
+    due_at: str
+    last_reviewed_at: str | None = None
+    last_correct: bool | None = None
+
+
+class KnowledgeEdge(BaseModel):
+    source_node_id: str
+    target_node_id: str
+    relation: str
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    source: str = "system"
+
+
 class PracticeSession(BaseModel):
     id: str
     mode: str

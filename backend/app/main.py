@@ -14,6 +14,10 @@ from app.knowledge.models import (
     Solution,
     LibraryItem,
     PracticeSession,
+    MistakeRecord,
+    WeaknessProfile,
+    ReviewState,
+    KnowledgeEdge,
     TaxonomyNode,
     TaxonomyProposal,
     TaxonomyProposalResolution,
@@ -22,6 +26,7 @@ from app.knowledge.classifier_ai import default_question_classifier
 from app.knowledge.question_intelligence import default_question_intelligence
 from app.knowledge.solution_engine import SolutionEngine, default_solution_provider
 from app.knowledge.practice import PracticeResult, PracticeQuestion, PracticeService
+from app.knowledge.intelligence import IntelligenceService
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
@@ -29,7 +34,9 @@ from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
 app = FastAPI(title="FocusForge AI Gateway", version="0.1.0")
 
 _data_dir = Path(os.getenv("FOCUSFORGE_DATA_DIR", "data"))
-practice_service = PracticeService(KnowledgeStore(_data_dir / "knowledge.db"))
+intelligence_store = KnowledgeStore(_data_dir / "knowledge.db")
+intelligence_service = IntelligenceService(intelligence_store)
+practice_service = PracticeService(intelligence_store, intelligence=intelligence_service)
 
 knowledge_service = KnowledgeService(
     store=KnowledgeStore(_data_dir / "knowledge.db"),
@@ -181,6 +188,57 @@ def submit_practice(session_id: str, request: PracticeSubmitRequest) -> Practice
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@app.get("/api/v1/intelligence/mistakes", response_model=list[MistakeRecord])
+def get_mistakes(
+    question_id: str | None = Query(default=None, min_length=1),
+    taxonomy_node_id: str | None = Query(default=None, min_length=1),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[MistakeRecord]:
+    return intelligence_service.store.get_mistakes(
+        question_id=question_id,
+        taxonomy_node_id=taxonomy_node_id,
+        limit=limit,
+    )
+
+
+@app.get("/api/v1/intelligence/weaknesses", response_model=list[WeaknessProfile])
+def get_weaknesses(limit: int = Query(default=100, ge=1, le=500)) -> list[WeaknessProfile]:
+    return intelligence_service.store.get_weaknesses(limit=limit)
+
+
+@app.get("/api/v1/intelligence/reviews/due", response_model=list[str])
+def get_due_reviews(limit: int = Query(default=100, ge=1, le=500)) -> list[str]:
+    return intelligence_service.store.get_due_review_question_ids(
+        intelligence_service.store.now(),
+        limit=limit,
+    )
+
+
+@app.get("/api/v1/intelligence/reviews/{question_id}", response_model=ReviewState)
+def get_review_state(question_id: str) -> ReviewState:
+    state = intelligence_service.store.get_review_state(question_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="Review state not found")
+    return state
+
+
+@app.get("/api/v1/intelligence/graph/edges", response_model=list[KnowledgeEdge])
+def get_knowledge_edges(
+    node_id: str | None = Query(default=None, min_length=1),
+    relation: str | None = Query(default=None, min_length=1),
+) -> list[KnowledgeEdge]:
+    return intelligence_service.store.get_knowledge_edges(node_id=node_id, relation=relation)
+
+
+@app.post("/api/v1/intelligence/graph/edges", response_model=KnowledgeEdge)
+def save_knowledge_edge(edge: KnowledgeEdge) -> KnowledgeEdge:
+    node_ids = {node.id for node in knowledge_service.taxonomy.all()}
+    if edge.source_node_id not in node_ids or edge.target_node_id not in node_ids:
+        raise HTTPException(status_code=400, detail="Knowledge graph edge references an unknown taxonomy node")
+    intelligence_service.store.save_knowledge_edge(edge)
+    return edge
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="focusforge-backend")
@@ -228,6 +286,11 @@ def bootstrap() -> dict[str, object]:
             "question-bank",
             "practice-sessions",
             "practice-scoring",
+            "mistake-intelligence",
+            "weakness-model",
+            "adaptive-practice",
+            "spaced-repetition",
+            "knowledge-graph-foundation",
         ],
     }
 

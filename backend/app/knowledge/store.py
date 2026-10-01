@@ -23,6 +23,10 @@ from .models import (
     SolutionStatus,
     PracticeSession,
     LibraryItem,
+    MistakeRecord,
+    WeaknessProfile,
+    ReviewState,
+    KnowledgeEdge,
 )
 
 
@@ -217,6 +221,63 @@ class KnowledgeStore:
 
                 CREATE INDEX IF NOT EXISTS idx_library_pinned
                     ON library_items(pinned, updated_at);
+
+                CREATE TABLE IF NOT EXISTS mistake_records (
+                    id TEXT PRIMARY KEY,
+                    question_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    submitted_answer TEXT,
+                    expected_answer TEXT,
+                    taxonomy_node_id TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(question_id) REFERENCES questions(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_mistakes_question
+                    ON mistake_records(question_id, created_at);
+
+                CREATE TABLE IF NOT EXISTS weakness_profiles (
+                    taxonomy_node_id TEXT PRIMARY KEY,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    correct INTEGER NOT NULL DEFAULT 0,
+                    incorrect INTEGER NOT NULL DEFAULT 0,
+                    accuracy REAL NOT NULL DEFAULT 0.0,
+                    mastery REAL NOT NULL DEFAULT 0.0,
+                    last_attempt_at TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_weakness_mastery
+                    ON weakness_profiles(mastery, accuracy);
+
+                CREATE TABLE IF NOT EXISTS review_states (
+                    question_id TEXT PRIMARY KEY,
+                    repetitions INTEGER NOT NULL DEFAULT 0,
+                    interval_days INTEGER NOT NULL DEFAULT 0,
+                    ease_factor REAL NOT NULL DEFAULT 2.5,
+                    due_at TEXT NOT NULL,
+                    last_reviewed_at TEXT,
+                    last_correct INTEGER,
+                    FOREIGN KEY(question_id) REFERENCES questions(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_review_due
+                    ON review_states(due_at);
+
+                CREATE TABLE IF NOT EXISTS knowledge_edges (
+                    source_node_id TEXT NOT NULL,
+                    target_node_id TEXT NOT NULL,
+                    relation TEXT NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    source TEXT NOT NULL DEFAULT 'system',
+                    PRIMARY KEY(source_node_id, target_node_id, relation),
+                    FOREIGN KEY(source_node_id) REFERENCES taxonomy_nodes(id),
+                    FOREIGN KEY(target_node_id) REFERENCES taxonomy_nodes(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_edges_source
+                    ON knowledge_edges(source_node_id);
+                CREATE INDEX IF NOT EXISTS idx_knowledge_edges_target
+                    ON knowledge_edges(target_node_id);
 
 
 
@@ -708,6 +769,199 @@ class KnowledgeStore:
                 pinned=bool(row["pinned"]), archived=bool(row["archived"]),
                 fast_mode_enabled=bool(row["fast_mode_enabled"]),
                 created_at=row["created_at"], updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+
+
+    def save_mistake(self, mistake: MistakeRecord) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT OR REPLACE INTO mistake_records
+                    (id, question_id, session_id, submitted_answer, expected_answer,
+                     taxonomy_node_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mistake.id, mistake.question_id, mistake.session_id,
+                    mistake.submitted_answer, mistake.expected_answer,
+                    mistake.taxonomy_node_id, mistake.created_at,
+                ),
+            )
+
+    def get_mistakes(
+        self,
+        question_id: str | None = None,
+        taxonomy_node_id: str | None = None,
+        limit: int = 100,
+    ) -> list[MistakeRecord]:
+        clauses = []
+        params: list[object] = []
+        if question_id is not None:
+            clauses.append("question_id = ?")
+            params.append(question_id)
+        if taxonomy_node_id is not None:
+            clauses.append("taxonomy_node_id = ?")
+            params.append(taxonomy_node_id)
+        query = "SELECT * FROM mistake_records"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [
+            MistakeRecord(
+                id=row["id"], question_id=row["question_id"], session_id=row["session_id"],
+                submitted_answer=row["submitted_answer"], expected_answer=row["expected_answer"],
+                taxonomy_node_id=row["taxonomy_node_id"], created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
+    def save_weakness(self, profile: WeaknessProfile) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO weakness_profiles
+                    (taxonomy_node_id, attempts, correct, incorrect, accuracy, mastery, last_attempt_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(taxonomy_node_id) DO UPDATE SET
+                    attempts=excluded.attempts,
+                    correct=excluded.correct,
+                    incorrect=excluded.incorrect,
+                    accuracy=excluded.accuracy,
+                    mastery=excluded.mastery,
+                    last_attempt_at=excluded.last_attempt_at
+                """,
+                (
+                    profile.taxonomy_node_id, profile.attempts, profile.correct,
+                    profile.incorrect, profile.accuracy, profile.mastery,
+                    profile.last_attempt_at,
+                ),
+            )
+
+    def get_weaknesses(self, limit: int = 100) -> list[WeaknessProfile]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM weakness_profiles ORDER BY mastery ASC, accuracy ASC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            WeaknessProfile(
+                taxonomy_node_id=row["taxonomy_node_id"], attempts=row["attempts"],
+                correct=row["correct"], incorrect=row["incorrect"],
+                accuracy=row["accuracy"], mastery=row["mastery"],
+                last_attempt_at=row["last_attempt_at"],
+            )
+            for row in rows
+        ]
+
+    def get_weakness(self, taxonomy_node_id: str) -> WeaknessProfile | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM weakness_profiles WHERE taxonomy_node_id = ?",
+                (taxonomy_node_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return WeaknessProfile(
+            taxonomy_node_id=row["taxonomy_node_id"], attempts=row["attempts"],
+            correct=row["correct"], incorrect=row["incorrect"],
+            accuracy=row["accuracy"], mastery=row["mastery"],
+            last_attempt_at=row["last_attempt_at"],
+        )
+
+    def save_review_state(self, state: ReviewState) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO review_states
+                    (question_id, repetitions, interval_days, ease_factor, due_at,
+                     last_reviewed_at, last_correct)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(question_id) DO UPDATE SET
+                    repetitions=excluded.repetitions,
+                    interval_days=excluded.interval_days,
+                    ease_factor=excluded.ease_factor,
+                    due_at=excluded.due_at,
+                    last_reviewed_at=excluded.last_reviewed_at,
+                    last_correct=excluded.last_correct
+                """,
+                (
+                    state.question_id, state.repetitions, state.interval_days,
+                    state.ease_factor, state.due_at, state.last_reviewed_at,
+                    None if state.last_correct is None else int(state.last_correct),
+                ),
+            )
+
+    def get_review_state(self, question_id: str) -> ReviewState | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM review_states WHERE question_id = ?",
+                (question_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return ReviewState(
+            question_id=row["question_id"], repetitions=row["repetitions"],
+            interval_days=row["interval_days"], ease_factor=row["ease_factor"],
+            due_at=row["due_at"], last_reviewed_at=row["last_reviewed_at"],
+            last_correct=None if row["last_correct"] is None else bool(row["last_correct"]),
+        )
+
+    def get_due_review_question_ids(self, now: str, limit: int = 100) -> list[str]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT question_id FROM review_states WHERE due_at <= ? ORDER BY due_at ASC LIMIT ?",
+                (now, limit),
+            ).fetchall()
+        return [row["question_id"] for row in rows]
+
+    def save_knowledge_edge(self, edge: KnowledgeEdge) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO knowledge_edges
+                    (source_node_id, target_node_id, relation, confidence, source)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(source_node_id, target_node_id, relation) DO UPDATE SET
+                    confidence=excluded.confidence,
+                    source=excluded.source
+                """,
+                (
+                    edge.source_node_id, edge.target_node_id, edge.relation,
+                    edge.confidence, edge.source,
+                ),
+            )
+
+    def get_knowledge_edges(
+        self,
+        node_id: str | None = None,
+        relation: str | None = None,
+    ) -> list[KnowledgeEdge]:
+        clauses = []
+        params: list[object] = []
+        if node_id is not None:
+            clauses.append("(source_node_id = ? OR target_node_id = ?)")
+            params.extend([node_id, node_id])
+        if relation is not None:
+            clauses.append("relation = ?")
+            params.append(relation)
+        query = "SELECT * FROM knowledge_edges"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
+        query += " ORDER BY source_node_id, target_node_id"
+        with self._connect() as connection:
+            rows = connection.execute(query, params).fetchall()
+        return [
+            KnowledgeEdge(
+                source_node_id=row["source_node_id"],
+                target_node_id=row["target_node_id"],
+                relation=row["relation"],
+                confidence=row["confidence"],
+                source=row["source"],
             )
             for row in rows
         ]
