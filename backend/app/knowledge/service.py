@@ -11,12 +11,14 @@ from .extractor import (
     asset_id,
     extract_document,
     extract_document_assets,
+    extract_content_blocks,
     reconstruct_question_candidates,
 )
 from .question_intelligence import HybridQuestionIntelligence
 from .models import (
     ClassificationStatus,
     DocumentAsset,
+    ContentBlock,
     DocumentRecord,
     ProcessingJob,
     ProcessingStatus,
@@ -212,6 +214,30 @@ class KnowledgeService:
                 )
             self.store.replace_document_assets(record.id, assets)
 
+            extracted_blocks = extract_content_blocks(str(source_path))
+            content_blocks: list[ContentBlock] = []
+            assets_by_page: dict[int, list[str]] = {}
+            for asset in assets:
+                assets_by_page.setdefault(asset.page_number, []).append(asset.id)
+            for block in extracted_blocks:
+                block_id = f"{record.id}-p{block.page_number}-b{block.block_index}"
+                content_blocks.append(
+                    ContentBlock(
+                        id=block_id,
+                        document_id=record.id,
+                        page_number=block.page_number,
+                        block_index=block.block_index,
+                        kind=block.kind,
+                        text=block.text,
+                        x0=block.bbox[0], y0=block.bbox[1],
+                        x1=block.bbox[2], y1=block.bbox[3],
+                        asset_ids=assets_by_page.get(block.page_number, []),
+                        source_hash=record.sha256,
+                        extractor="pymupdf-content-blocks-v1",
+                    )
+                )
+            self.store.replace_content_blocks(record.id, content_blocks)
+
             questions = self._build_question_records(record, pages, assets)
             self.store.replace_questions(record.id, questions)
 
@@ -250,6 +276,14 @@ class KnowledgeService:
                 if failed is not None:
                     results.append(failed)
         return results
+
+    def extract_content_blocks(
+        self, document_id: str, page: int | None = None, kind: str | None = None
+    ) -> list[ContentBlock]:
+        document = self.store.get_document(document_id)
+        if document is None:
+            raise KeyError(document_id)
+        return self.store.get_content_blocks(document_id, page=page, kind=kind)
 
     def extract_questions(
         self,
