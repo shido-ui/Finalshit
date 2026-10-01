@@ -95,7 +95,7 @@ def test_child_proposal_requires_approved_new_parent(tmp_path):
 
     parent = proposal(
         "doc-1",
-        "doc-1-new-rolling",
+        "doc-1-new:rolling",
         parent_id="physics.c05",
         name="Rolling Motion",
     )
