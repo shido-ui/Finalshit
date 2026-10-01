@@ -5,6 +5,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -174,17 +175,29 @@ Question:
             },
             method="POST",
         )
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+                break
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                if exc.code not in {408, 429, 500, 502, 503, 504} or attempt == 2:
+                    raise RuntimeError(
+                        f"Gemini question intelligence request failed (HTTP {exc.code})"
+                    ) from exc
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_error = exc
+                if attempt == 2:
+                    raise RuntimeError("Gemini question intelligence request failed") from exc
+            time.sleep(0.5 * (2 ** attempt))
+        else:
+            raise RuntimeError("Gemini question intelligence request failed") from last_error
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            raise RuntimeError(
-                f"Gemini question intelligence request failed (HTTP {exc.code})"
-            ) from exc
-        except (urllib.error.URLError, TimeoutError) as exc:
+            body
+        except NameError as exc:
             raise RuntimeError("Gemini question intelligence request failed") from exc
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("Gemini returned invalid JSON") from exc
 
         try:
             text = body["candidates"][0]["content"]["parts"][0]["text"]
