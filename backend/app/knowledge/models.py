@@ -43,3 +43,10 @@ class DocumentRecord(BaseModel):
     status: ProcessingStatus
     error: str | None = None
     question_count: int = 0
+
+
+class ProcessingJob(BaseModel):
+    id: str
+    document_id: str
+    status: ProcessingStatus
+    updated_at: str
