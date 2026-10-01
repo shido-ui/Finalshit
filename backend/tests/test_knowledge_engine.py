@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import pymupdf
 
 from app.knowledge.extractor import extract_document, reconstruct_question_candidates
@@ -18,6 +19,13 @@ def make_pdf() -> bytes:
         "2. What is Newton's second law?\n"
         "(A) F=ma\n(B) E=mc2\n(C) p=mv\n(D) W=Fd",
     )
+    content = document.tobytes()
+    document.close()
+    return content
+
+
+def make_empty_pdf() -> bytes:
+    document = pymupdf.open()
     content = document.tobytes()
     document.close()
     return content
@@ -82,3 +90,57 @@ def test_pending_job_can_resume(tmp_path: Path):
 
     assert resumed[0].status is ProcessingStatus.READY
     assert store.pending_jobs() == []
+
+
+def test_empty_pdf_is_rejected_and_not_persisted(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
+
+    with pytest.raises(ValueError, match="no pages"):
+        service.ingest_pdf("empty.pdf", make_empty_pdf())
+
+    assert list((tmp_path / "documents").glob("*.pdf")) == []
+
+
+def test_missing_source_is_reported_as_a_consistent_failure(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
+
+    record = DocumentRecord(
+        id="missing-source",
+        filename="missing.pdf",
+        sha256="a" * 64,
+        page_count=1,
+        status=ProcessingStatus.QUEUED,
+    )
+    store.save_document(record)
+    store.save_job(
+        ProcessingJob(
+            id="missing-job",
+            document_id=record.id,
+            status=ProcessingStatus.QUEUED,
+            updated_at=store.now(),
+        )
+    )
+
+    result = service.resume_pending()
+
+    assert result[0].status is ProcessingStatus.FAILED
+    assert result[0].error == "Source PDF is missing"
+    assert store.get_job("missing-job").status is ProcessingStatus.FAILED
+
+
+def test_extract_questions_requires_source_file(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
+    record = DocumentRecord(
+        id="missing-source",
+        filename="missing.pdf",
+        sha256="a" * 64,
+        page_count=1,
+        status=ProcessingStatus.READY,
+    )
+    store.save_document(record)
+
+    with pytest.raises(FileNotFoundError):
+        service.extract_questions(record.id)
