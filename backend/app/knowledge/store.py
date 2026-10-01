@@ -462,6 +462,22 @@ class KnowledgeStore:
                 ],
             )
 
+    def get_document_asset(self, asset_id: str) -> DocumentAsset | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM document_assets WHERE id = ?",
+                (asset_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return DocumentAsset(
+            id=row["id"], document_id=row["document_id"], page_number=row["page_number"],
+            asset_index=row["asset_index"], kind=row["kind"], mime_type=row["mime_type"],
+            sha256=row["sha256"], byte_size=row["byte_size"], width=row["width"],
+            height=row["height"], xref=row["xref"], source_hash=row["source_hash"],
+            storage_path=row["storage_path"],
+        )
+
     def get_document_assets(self, document_id: str, page: int | None = None) -> list[DocumentAsset]:
         clauses = ["document_id = ?"]
         params: list[object] = [document_id]
