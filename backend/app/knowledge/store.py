@@ -8,6 +8,8 @@ from pathlib import Path
 from .models import (
     ClassificationStatus,
     DocumentRecord,
+    TaxonomyProposal,
+    TaxonomyProposalStatus,
     ProcessingJob,
     ProcessingStatus,
     Provenance,
@@ -55,6 +57,24 @@ class KnowledgeStore:
                     FOREIGN KEY(document_id) REFERENCES documents(id)
                 );
 
+
+                CREATE TABLE IF NOT EXISTS taxonomy_proposals (
+                    id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL,
+                    parent_id TEXT,
+                    name TEXT NOT NULL,
+                    level TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    evidence TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_taxonomy_proposals_document
+                    ON taxonomy_proposals(document_id);
+                CREATE INDEX IF NOT EXISTS idx_taxonomy_proposals_status
+                    ON taxonomy_proposals(status);
                 CREATE INDEX IF NOT EXISTS idx_questions_document
                     ON questions(document_id);
                 CREATE INDEX IF NOT EXISTS idx_questions_taxonomy
@@ -268,3 +288,78 @@ class KnowledgeStore:
     @staticmethod
     def now() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+
+    def save_taxonomy_proposals(
+        self, proposals: list[TaxonomyProposal]
+    ) -> None:
+        if not proposals:
+            return
+        with self._connect() as connection:
+            connection.executemany(
+                """
+                INSERT INTO taxonomy_proposals (
+                    id, document_id, parent_id, name, level, confidence,
+                    evidence, status, provider
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    parent_id=excluded.parent_id,
+                    name=excluded.name,
+                    level=excluded.level,
+                    confidence=excluded.confidence,
+                    evidence=excluded.evidence,
+                    status=excluded.status,
+                    provider=excluded.provider
+                """,
+                [
+                    (
+                        item.id,
+                        item.document_id,
+                        item.parent_id,
+                        item.name,
+                        item.level,
+                        item.confidence,
+                        item.evidence,
+                        item.status.value,
+                        item.provider,
+                    )
+                    for item in proposals
+                ],
+            )
+
+    def get_taxonomy_proposals(
+        self,
+        document_id: str,
+        status: TaxonomyProposalStatus | None = None,
+    ) -> list[TaxonomyProposal]:
+        clauses = ["document_id = ?"]
+        params: list[object] = [document_id]
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status.value)
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT * FROM taxonomy_proposals
+                WHERE {" AND ".join(clauses)}
+                ORDER BY level, name, id
+                """,
+                params,
+            ).fetchall()
+
+        return [
+            TaxonomyProposal(
+                id=row["id"],
+                document_id=row["document_id"],
+                parent_id=row["parent_id"],
+                name=row["name"],
+                level=row["level"],
+                confidence=row["confidence"],
+                evidence=row["evidence"],
+                status=TaxonomyProposalStatus(row["status"]),
+                provider=row["provider"],
+            )
+            for row in rows
+        ]
