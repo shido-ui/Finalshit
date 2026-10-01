@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app.knowledge.models import QuestionCandidate
+from app.knowledge.models import Provenance, QuestionCandidate
 from app.knowledge.solution_engine import (
     GeminiSolutionProvider,
     SolutionCandidate,
@@ -41,7 +41,7 @@ def test_validator_accepts_grounded_structured_solution():
     q = question().model_copy(
         update={
             "provenance": [
-                {"document_id": "doc", "page_number": 1, "source_hash": "h", "extractor": "test"}
+                Provenance(document_id="doc", page_number=1, source_hash="h", extractor="test")
             ]
         }
     )
@@ -75,7 +75,7 @@ def test_engine_marks_valid_solution_verified():
     q = question().model_copy(
         update={
             "provenance": [
-                {"document_id": "doc", "page_number": 1, "source_hash": "hash", "extractor": "test"}
+                Provenance(document_id="doc", page_number=1, source_hash="hash", extractor="test")
             ]
         }
     )
