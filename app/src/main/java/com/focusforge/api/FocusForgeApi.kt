@@ -141,6 +141,22 @@ class FocusForgeApi(
         )
     }
 
+    suspend fun getPracticeSession(sessionId: String): PracticeStart = withContext(Dispatchers.IO) {
+        val json = JSONObject(
+            request("GET", "/api/v1/practice/sessions/${encode(sessionId)}")
+        )
+        val sessionJson = json.getJSONObject("session")
+        val questionsJson = json.getJSONArray("questions")
+        PracticeStart(
+            session = parsePracticeSession(sessionJson),
+            questions = buildList(questionsJson.length()) {
+                for (index in 0 until questionsJson.length()) {
+                    add(parsePracticeQuestion(questionsJson.getJSONObject(index)))
+                }
+            }
+        )
+    }
+
     suspend fun submitPractice(
         sessionId: String,
         answers: Map<String, String>
