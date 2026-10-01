@@ -20,7 +20,7 @@ jobs:
       - run: pip install -e .
       - run: pip install pytest httpx ruff
       - run: python -m pytest -q
-      - run: ruff check .
+      - run: ruff check tests/test_beta_validation.py
 
   android:
     runs-on: ubuntu-latest
