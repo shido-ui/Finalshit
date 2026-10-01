@@ -59,3 +59,22 @@ class ProcessingJob(BaseModel):
     document_id: str
     status: ProcessingStatus
     updated_at: str
+
+
+
+class TaxonomyProposalStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class TaxonomyProposal(BaseModel):
+    id: str
+    document_id: str
+    parent_id: str | None = None
+    name: str
+    level: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence: str
+    status: TaxonomyProposalStatus = TaxonomyProposalStatus.PENDING
+    provider: str

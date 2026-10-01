@@ -9,10 +9,12 @@ from app.knowledge.models import (
     DocumentRecord,
     QuestionCandidate,
     TaxonomyNode,
+    TaxonomyProposal,
 )
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy import DEFAULT_TAXONOMY
+from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
 
 app = FastAPI(title="FocusForge AI Gateway", version="0.1.0")
 
@@ -20,6 +22,7 @@ _data_dir = Path(os.getenv("FOCUSFORGE_DATA_DIR", "data"))
 knowledge_service = KnowledgeService(
     store=KnowledgeStore(_data_dir / "knowledge.db"),
     storage_dir=_data_dir / "documents",
+    taxonomy_proposal_provider=GeminiTaxonomyProposalProvider(),
 )
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
@@ -51,6 +54,8 @@ def bootstrap() -> dict[str, object]:
             "taxonomy",
             "jee-2026-paper-1-taxonomy",
             "hierarchical-taxonomy-filtering",
+            "ai-taxonomy-discovery",
+            "taxonomy-proposals",
             "provenance",
         ],
     }
@@ -99,6 +104,37 @@ async def ingest_document(
         return knowledge_service.ingest_pdf(filename, content)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+
+
+@app.post(
+    "/api/v1/knowledge/documents/{document_id}/taxonomy/proposals",
+    response_model=list[TaxonomyProposal],
+)
+def propose_document_taxonomy(document_id: str) -> list[TaxonomyProposal]:
+    try:
+        return knowledge_service.propose_taxonomy(document_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Document not found") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail="Document source is missing") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        if str(exc) == "GEMINI_API_KEY is not configured":
+            raise HTTPException(status_code=503, detail="Taxonomy AI provider is not configured") from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/knowledge/documents/{document_id}/taxonomy/proposals",
+    response_model=list[TaxonomyProposal],
+)
+def get_document_taxonomy_proposals(document_id: str) -> list[TaxonomyProposal]:
+    if knowledge_service.store.get_document(document_id) is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return knowledge_service.store.get_taxonomy_proposals(document_id)
 
 
 @app.get(
