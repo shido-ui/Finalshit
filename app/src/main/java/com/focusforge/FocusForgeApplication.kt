@@ -18,6 +18,9 @@ import java.util.concurrent.TimeUnit
 class FocusForgeApplication : Application() {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    lateinit var sessionRepository: FocusSessionRepository
+        private set
+
     lateinit var sessionManager: FocusSessionManager
         private set
 
@@ -31,13 +34,13 @@ class FocusForgeApplication : Application() {
         super.onCreate()
 
         val database = DatabaseProvider.create(this)
-        val repository = FocusSessionRepository(database.focusSessionDao())
+        sessionRepository = FocusSessionRepository(database.focusSessionDao())
         libraryRepository = LibraryRepository(database.libraryItemDao())
         backendRepository = BackendRepository(this)
         val workManager = WorkManager.getInstance(this)
 
         sessionManager = FocusSessionManager(
-            repository = repository,
+            repository = sessionRepository,
             workManager = workManager,
             scope = applicationScope
         )
