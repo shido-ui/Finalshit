@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
                 val focusState by viewModel.focusState.collectAsState()
                 var selectedMinutes by remember { mutableStateOf(25) }
                 var usageGranted by remember { mutableStateOf(UsageAccess.isGranted(this@MainActivity)) }
+                var enforcementError by remember { mutableStateOf<String?>(null) }
                 val apps = remember { catalog.installedLaunchableApps() }
                 var allowedPackages by remember {
                     mutableStateOf(setOf(packageName))
@@ -86,23 +87,36 @@ class MainActivity : ComponentActivity() {
                                 if (focusState == FocusState.IDLE) {
                                     Button(
                                         onClick = {
-                                            if (enforcementStatus.deviceOwner) {
-                                                enforcement.startLockTask(this@MainActivity, allowedPackages)
+                                            enforcementError = null
+                                            val enforcementStarted =
+                                                !enforcementStatus.deviceOwner ||
+                                                    enforcement.startLockTask(
+                                                        this@MainActivity,
+                                                        allowedPackages
+                                                    )
+                                            if (enforcementStarted) {
+                                                viewModel.startFocus(selectedMinutes)
+                                            } else {
+                                                enforcementError =
+                                                    "Focus could not start because device-owner enforcement could not be enabled."
                                             }
-                                            viewModel.startFocus(selectedMinutes)
                                         },
                                         Modifier.fillMaxWidth()
                                     ) { Text("Start focus") }
                                 } else {
                                     Button(
                                         onClick = {
-                                            if (enforcementStatus.deviceOwner) {
-                                                enforcement.stopLockTask(this@MainActivity)
-                                            }
+                                            enforcement.stopLockTask(this@MainActivity)
                                             viewModel.cancelFocus()
                                         },
                                         Modifier.fillMaxWidth()
                                     ) { Text("End focus") }
+                                }
+                                enforcementError?.let {
+                                    Text(
+                                        it,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
                                 Text(
                                     if (enforcementStatus.deviceOwner) {
@@ -170,10 +184,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
     }
 }
 
