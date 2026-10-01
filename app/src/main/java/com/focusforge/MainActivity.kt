@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -40,6 +41,7 @@ import com.focusforge.api.BackendDocument
 import com.focusforge.api.BackendHealth
 import com.focusforge.api.BackendRepository
 import com.focusforge.data.LibraryItem
+import com.focusforge.data.focusForgePreferences
 import com.focusforge.enforcement.FocusEnforcementController
 import com.focusforge.focus.FocusState
 import com.focusforge.launcher.AppCatalog
@@ -49,6 +51,9 @@ import com.focusforge.ui.IntelligenceCard
 import com.focusforge.ui.PracticeCard
 import com.focusforge.usage.UsageAccess
 import com.focusforge.usage.openUsageAccessSettings
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import androidx.datastore.preferences.core.edit
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -78,9 +83,32 @@ class MainActivity : ComponentActivity() {
                 var adaptiveLaunchToken by remember { mutableStateOf(0) }
                 val apps = remember { catalog.installedLaunchableApps() }
                 var allowedPackages by remember { mutableStateOf(setOf(packageName)) }
-                val enforcementStatus = remember { enforcement.status() }
+                var enforcementStatus by remember { mutableStateOf(enforcement.status()) }
                 val libraryItems by libraryRepository.observeActive().collectAsState(initial = emptyList())
                 val scope = rememberCoroutineScope()
+                LaunchedEffect(Unit) {
+                    val key = stringSetPreferencesKey("allowed_packages")
+                    val saved = applicationContext.focusForgePreferences.data.first()[key].orEmpty()
+                    if (saved.isNotEmpty()) allowedPackages = saved + packageName
+                }
+
+                LaunchedEffect(allowedPackages) {
+                    val key = stringSetPreferencesKey("allowed_packages")
+                    applicationContext.focusForgePreferences.edit { preferences ->
+                        preferences[key] = allowedPackages
+                    }
+                }
+
+                LaunchedEffect(focusState) {
+                    if (focusState == FocusState.IDLE) {
+                        enforcement.stopLockTask(this@MainActivity)
+                    }
+                }
+
+                DisposableEffect(Unit) {
+                    onDispose { enforcement.stopLockTask(this@MainActivity) }
+                }
+
                 val picker = rememberLauncherForActivityResult(
                     ActivityResultContracts.OpenDocument()
                 ) { uri ->
@@ -232,7 +260,7 @@ class MainActivity : ComponentActivity() {
                                         Text(it, style = MaterialTheme.typography.bodySmall)
                                     }
                                     Text(
-                                        if (enforcement.status().deviceOwner) {
+                                        if (enforcementStatus.deviceOwner) {
                                             "Dedicated-device enforcement available."
                                         } else {
                                             "Standard mode records the session; app blocking requires supported device-owner provisioning."
