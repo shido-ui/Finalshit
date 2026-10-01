@@ -590,6 +590,22 @@ def get_asset(asset_id: str) -> FileResponse:
     )
 
 
+@app.delete("/api/v1/knowledge/documents/{document_id}", status_code=204)
+def delete_document(document_id: str) -> Response:
+    document = knowledge_service.store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    deleted = knowledge_service.store.delete_document(document_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    source_path = knowledge_service.storage_dir / (document_id + ".pdf")
+    source_path.unlink(missing_ok=True)
+    asset_dir = knowledge_service.storage_dir / "assets" / document_id
+    import shutil
+    shutil.rmtree(asset_dir, ignore_errors=True)
+    return Response(status_code=204)
+
+
 @app.get(
     "/api/v1/knowledge/documents/{document_id}",
     response_model=DocumentRecord,
