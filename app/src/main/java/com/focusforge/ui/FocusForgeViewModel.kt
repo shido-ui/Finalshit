@@ -17,9 +17,9 @@ class FocusForgeViewModel(
         viewModelScope.launch { manager.recover() }
     }
 
-    fun startFocus(minutes: Int) {
+    suspend fun startFocus(minutes: Int): Boolean {
         require(minutes > 0)
-        manager.start(minutes * 60_000L)
+        return manager.start(minutes * 60_000L)
     }
 
     fun cancelFocus() {
