@@ -1,4 +1,5 @@
 from enum import Enum
+
 from pydantic import BaseModel, Field
 
 
@@ -7,6 +8,12 @@ class ProcessingStatus(str, Enum):
     EXTRACTING = "extracting"
     READY = "ready"
     FAILED = "failed"
+
+
+class ClassificationStatus(str, Enum):
+    UNCLASSIFIED = "unclassified"
+    CLASSIFIED = "classified"
+    QUARANTINED = "quarantined"
 
 
 class TaxonomyNode(BaseModel):
@@ -31,7 +38,9 @@ class QuestionCandidate(BaseModel):
     text: str
     number: str | None = None
     taxonomy_node_id: str | None = None
+    classification_status: ClassificationStatus = ClassificationStatus.UNCLASSIFIED
     classification_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    classification_reason: str | None = None
     provenance: list[Provenance] = Field(default_factory=list)
 
 
