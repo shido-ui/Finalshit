@@ -553,6 +553,14 @@ def get_document_assets(
     return knowledge_service.store.get_document_assets(document_id, page=page)
 
 
+@app.get("/api/v1/knowledge/questions/{question_id}/assets", response_model=list[DocumentAsset])
+def get_question_assets(question_id: str) -> list[DocumentAsset]:
+    question = knowledge_service.store.get_question(question_id)
+    if question is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+    return knowledge_service.store.get_question_assets(question_id)
+
+
 @app.get("/api/v1/knowledge/assets/{asset_id}")
 def get_asset(asset_id: str) -> FileResponse:
     asset = knowledge_service.store.get_document_asset(asset_id)
