@@ -38,6 +38,8 @@ def bootstrap() -> dict[str, object]:
         "features": [
             "document-ingestion",
             "question-reconstruction",
+            "question-indexing",
+            "question-filtering",
             "taxonomy",
             "provenance",
         ],
@@ -104,9 +106,17 @@ def get_document(document_id: str) -> DocumentRecord:
     "/api/v1/knowledge/documents/{document_id}/questions",
     response_model=list[QuestionCandidate],
 )
-def get_questions(document_id: str) -> list[QuestionCandidate]:
+def get_questions(
+    document_id: str,
+    taxonomy_node_id: str | None = Query(default=None, min_length=1),
+    page: int | None = Query(default=None, ge=1),
+) -> list[QuestionCandidate]:
     try:
-        return knowledge_service.extract_questions(document_id)
+        return knowledge_service.extract_questions(
+            document_id,
+            taxonomy_node_id=taxonomy_node_id,
+            page=page,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Document not found") from exc
     except FileNotFoundError as exc:
