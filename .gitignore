@@ -1,0 +1,29 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Runtime data
+backend/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Android/Gradle
+.gradle/
+build/
+app/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
