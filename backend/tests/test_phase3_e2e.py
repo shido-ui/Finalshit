@@ -1,4 +1,10 @@
+import base64
+
 import pymupdf
+
+ONE_PIXEL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 from app.knowledge.classifier import DEFAULT_CLASSIFIER
 from app.knowledge.service import KnowledgeService
@@ -16,7 +22,7 @@ def build_fixture_pdf() -> bytes:
         "(C) 30 m/s\n"
         "(D) 40 m/s",
     )
-    page.draw_rect(pymupdf.Rect(50, 120, 150, 180))
+    page.insert_image(pymupdf.Rect(50, 120, 150, 180), stream=ONE_PIXEL_PNG)
     output = document.tobytes()
     document.close()
     return output
@@ -40,7 +46,11 @@ def test_phase3_ingestion_end_to_end_persists_all_core_artifacts(tmp_path):
     blocks = store.get_content_blocks(record.id)
     questions = store.get_questions(record.id)
 
-    assert assets == []
+    assert len(assets) == 1
+    assert assets[0].source_hash == record.sha256
+    assert assets[0].x1 > assets[0].x0
+    assert assets[0].y1 > assets[0].y0
+    assert assets[0].id in blocks[0].asset_ids or any(assets[0].id in block.asset_ids for block in blocks)
     assert blocks
     assert any(block.kind == "question" for block in blocks)
     assert questions
