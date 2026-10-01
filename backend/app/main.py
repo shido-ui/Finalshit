@@ -40,6 +40,20 @@ app = FastAPI(title="FocusForge AI Gateway", version="0.1.0")
 
 
 @app.middleware("http")
+async def api_access_control(request: Request, call_next) -> Response:
+    if request.url.path.startswith("/api/"):
+        if API_TOKEN:
+            supplied = request.headers.get("Authorization", "")
+            if supplied != "Bearer " + API_TOKEN:
+                return Response(status_code=401, content="Unauthorized")
+        else:
+            host = request.client.host if request.client else ""
+            if host not in {"127.0.0.1", "::1", "localhost"}:
+                return Response(status_code=403, content="Backend is localhost-only unless FOCUSFORGE_API_TOKEN is configured")
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def security_headers(request: Request, call_next) -> Response:
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -52,13 +66,19 @@ async def security_headers(request: Request, call_next) -> Response:
     response.headers["X-Request-ID"] = request_id
     return response
 
-_data_dir = Path(os.getenv("FOCUSFORGE_DATA_DIR", "data"))
-intelligence_store = KnowledgeStore(_data_dir / "knowledge.db")
-intelligence_service = IntelligenceService(intelligence_store)
-practice_service = PracticeService(intelligence_store, intelligence=intelligence_service)
+_configured_data_dir = os.getenv("FOCUSFORGE_DATA_DIR")
+if _configured_data_dir:
+    _data_dir = Path(_configured_data_dir).expanduser().resolve()
+else:
+    _data_dir = (Path(__file__).resolve().parents[2] / "data").resolve()
+_data_dir.mkdir(parents=True, exist_ok=True)
+
+_store = KnowledgeStore(_data_dir / "knowledge.db")
+intelligence_service = IntelligenceService(_store)
+practice_service = PracticeService(_store, intelligence=intelligence_service)
 
 knowledge_service = KnowledgeService(
-    store=KnowledgeStore(_data_dir / "knowledge.db"),
+    store=_store,
     storage_dir=_data_dir / "documents",
     taxonomy_proposal_provider=GeminiTaxonomyProposalProvider(),
     classifier=default_question_classifier(),
@@ -67,6 +87,7 @@ knowledge_service = KnowledgeService(
 )
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
+API_TOKEN = os.getenv("FOCUSFORGE_API_TOKEN", "").strip()
 study_copilot = StudyCopilot(default_copilot_provider())
 
 
@@ -113,6 +134,16 @@ class PracticeStartRequest(BaseModel):
     document_id: str | None = None
     taxonomy_node_id: str | None = None
     seed: int | None = None
+
+
+class LibraryUpdateRequest(BaseModel):
+    pinned: bool | None = None
+    archived: bool | None = None
+    fast_mode_enabled: bool | None = None
+
+
+class AnswerUpdateRequest(BaseModel):
+    answer: str = Field(min_length=1, max_length=1000)
 
 
 class PracticeStartResponse(BaseModel):
@@ -165,9 +196,7 @@ def get_library(include_archived: bool = False) -> list[LibraryItem]:
 @app.patch("/api/v1/library/{document_id}", response_model=LibraryItem)
 def update_library_item(
     document_id: str,
-    pinned: bool | None = None,
-    archived: bool | None = None,
-    fast_mode_enabled: bool | None = None,
+    request: LibraryUpdateRequest,
 ) -> LibraryItem:
     document = knowledge_service.store.get_document(document_id)
     if document is None:
@@ -184,10 +213,10 @@ def update_library_item(
         )
     updated = current.model_copy(
         update={
-            "pinned": current.pinned if pinned is None else pinned,
-            "archived": current.archived if archived is None else archived,
+            "pinned": current.pinned if request.pinned is None else request.pinned,
+            "archived": current.archived if request.archived is None else request.archived,
             "fast_mode_enabled": (
-                current.fast_mode_enabled if fast_mode_enabled is None else fast_mode_enabled
+                current.fast_mode_enabled if request.fast_mode_enabled is None else request.fast_mode_enabled
             ),
             "updated_at": knowledge_service.store.now(),
         }
