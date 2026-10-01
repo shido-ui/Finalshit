@@ -66,6 +66,11 @@ def test_validator_rejects_low_confidence():
     assert result.valid is False
 
 
+def test_validator_requires_source_evidence():
+    result = SolutionValidator().validate(question(), candidate(evidence_pages=[]), {1: "question"})
+    assert result.valid is False
+
+
 def test_engine_marks_valid_solution_verified():
     q = question().model_copy(
         update={
@@ -143,3 +148,38 @@ def test_gemini_requires_server_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
         GeminiSolutionProvider().generate(question(), {1: "source"})
+
+def test_store_round_trips_solution(tmp_path):
+    from app.knowledge.models import DocumentRecord, ProcessingStatus
+    from app.knowledge.store import KnowledgeStore
+
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    store.save_document(
+        DocumentRecord(
+            id="doc",
+            filename="x.pdf",
+            sha256="hash",
+            page_count=1,
+            status=ProcessingStatus.READY,
+        )
+    )
+    q = question().model_copy(
+        update={
+            "provenance": [
+                {"document_id": "doc", "page_number": 1, "source_hash": "hash", "extractor": "test"}
+            ]
+        }
+    )
+    store.replace_questions("doc", [q])
+    solution = SolutionEngine(
+        type("FakeProvider", (), {
+            "name": "fake",
+            "generate": lambda self, question, source_pages: candidate(),
+        })()
+    ).generate(q, {1: "source"})
+    store.save_solution(solution)
+    restored = store.get_solution("q1")
+    assert restored is not None
+    assert restored.final_answer == "1"
+    assert restored.status.value == "verified"
+    assert restored.provenance[0].source_hash == "hash"
