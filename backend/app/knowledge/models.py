@@ -92,6 +92,28 @@ class QuestionCandidate(BaseModel):
     provenance: list[Provenance] = Field(default_factory=list)
 
 
+
+class SolutionStatus(str, Enum):
+    GENERATED = "generated"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+
+
+class Solution(BaseModel):
+    id: str
+    question_id: str
+    document_id: str
+    answer: str | None = None
+    method: str
+    steps: list[str] = Field(default_factory=list)
+    final_answer: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    status: SolutionStatus
+    provider: str
+    validation_reason: str
+    provenance: list[Provenance] = Field(default_factory=list)
+
+
 class DocumentRecord(BaseModel):
     id: str
     filename: str

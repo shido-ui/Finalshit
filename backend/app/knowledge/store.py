@@ -19,6 +19,8 @@ from .models import (
     ProcessingStatus,
     Provenance,
     QuestionCandidate,
+    Solution,
+    SolutionStatus,
 )
 
 
@@ -162,6 +164,29 @@ class KnowledgeStore:
                     ON taxonomy_proposals(status);
                 CREATE INDEX IF NOT EXISTS idx_questions_document
                     ON questions(document_id);
+
+                CREATE TABLE IF NOT EXISTS solutions (
+                    id TEXT PRIMARY KEY,
+                    question_id TEXT NOT NULL,
+                    document_id TEXT NOT NULL,
+                    answer TEXT,
+                    method TEXT NOT NULL,
+                    steps_json TEXT NOT NULL,
+                    final_answer TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    validation_reason TEXT NOT NULL,
+                    provenance_json TEXT NOT NULL,
+                    FOREIGN KEY(question_id) REFERENCES questions(id),
+                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_solutions_question
+                    ON solutions(question_id);
+                CREATE INDEX IF NOT EXISTS idx_solutions_document
+                    ON solutions(document_id);
+
                 CREATE INDEX IF NOT EXISTS idx_questions_taxonomy
                     ON questions(taxonomy_node_id);
                 CREATE INDEX IF NOT EXISTS idx_questions_page_start
@@ -382,6 +407,18 @@ class KnowledgeStore:
                 ],
             )
 
+
+    def get_question(self, question_id: str) -> QuestionCandidate | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM questions WHERE id = ?",
+                (question_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        rows = self.get_questions(row["document_id"])
+        return next((item for item in rows if item.id == question_id), None)
+
     def get_questions(
         self,
         document_id: str,
@@ -584,6 +621,74 @@ class KnowledgeStore:
             )
             for row in rows
         ]
+
+
+    def save_solution(self, solution: Solution) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO solutions (
+                    id, question_id, document_id, answer, method, steps_json,
+                    final_answer, confidence, status, provider, validation_reason,
+                    provenance_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    question_id=excluded.question_id,
+                    document_id=excluded.document_id,
+                    answer=excluded.answer,
+                    method=excluded.method,
+                    steps_json=excluded.steps_json,
+                    final_answer=excluded.final_answer,
+                    confidence=excluded.confidence,
+                    status=excluded.status,
+                    provider=excluded.provider,
+                    validation_reason=excluded.validation_reason,
+                    provenance_json=excluded.provenance_json
+                """,
+                (
+                    solution.id,
+                    solution.question_id,
+                    solution.document_id,
+                    solution.answer,
+                    solution.method,
+                    json.dumps(solution.steps, ensure_ascii=False, separators=(",", ":")),
+                    solution.final_answer,
+                    solution.confidence,
+                    solution.status.value,
+                    solution.provider,
+                    solution.validation_reason,
+                    json.dumps(
+                        [item.model_dump(mode="json") for item in solution.provenance],
+                        separators=(",", ":"),
+                    ),
+                ),
+            )
+
+    def get_solution(self, question_id: str) -> Solution | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM solutions WHERE question_id = ? ORDER BY id DESC LIMIT 1",
+                (question_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return Solution(
+            id=row["id"],
+            question_id=row["question_id"],
+            document_id=row["document_id"],
+            answer=row["answer"],
+            method=row["method"],
+            steps=json.loads(row["steps_json"]),
+            final_answer=row["final_answer"],
+            confidence=row["confidence"],
+            status=SolutionStatus(row["status"]),
+            provider=row["provider"],
+            validation_reason=row["validation_reason"],
+            provenance=[
+                Provenance.model_validate(item)
+                for item in json.loads(row["provenance_json"])
+            ],
+        )
 
     def save_taxonomy_node(
         self,
