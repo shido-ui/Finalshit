@@ -24,26 +24,25 @@ class FocusSessionManager(
 
     suspend fun start(durationMs: Long): Boolean {
         require(durationMs > 0)
-        scope.launch {
-            val existing = repository.activeSession.first()
-            if (existing != null) {
-                recoverOrFinish(existing)
-                if (repository.activeSession.first() != null) return false
-            }
+        val existing = repository.activeSession.first()
+        if (existing != null) {
+            recoverOrFinish(existing)
+            if (repository.activeSession.first() != null) return false
+        }
 
-            val armed = repository.createArmed(durationMs, nowMs())
-            val locked = repository.transition(armed, FocusState.LOCKED, nowMs())
-            _state.value = FocusState.LOCKED
+        val armed = repository.createArmed(durationMs, nowMs())
+        val locked = repository.transition(armed, FocusState.LOCKED, nowMs())
+        _state.value = FocusState.LOCKED
 
-            val request = OneTimeWorkRequestBuilder<FocusMaintenanceWorker>()
-                .setInitialDelay(locked.plannedDurationMs, TimeUnit.MILLISECONDS)
-                .build()
-            workManager.enqueueUniqueWork(
-                "focus-end-" + locked.id,
-                ExistingWorkPolicy.REPLACE,
-                request
-            )
-            return true
+        val request = OneTimeWorkRequestBuilder<FocusMaintenanceWorker>()
+            .setInitialDelay(locked.plannedDurationMs, TimeUnit.MILLISECONDS)
+            .build()
+        workManager.enqueueUniqueWork(
+            "focus-end-" + locked.id,
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+        return true
     }
 
     fun cancel() {
