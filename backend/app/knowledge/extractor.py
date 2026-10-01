@@ -34,6 +34,15 @@ class ExtractedAsset:
 
 
 @dataclass(frozen=True)
+class ExtractedContentBlock:
+    page_number: int
+    block_index: int
+    kind: str
+    text: str
+    bbox: tuple[float, float, float, float]
+
+
+@dataclass(frozen=True)
 class ExtractedQuestion:
     number: str | None
     page_start: int
@@ -148,3 +157,39 @@ def reconstruct_question_candidates(
         if len(candidate.text) >= 12
         and (OPTION_LINE.search(candidate.text) or "?" in candidate.text)
     ]
+
+
+def extract_content_blocks(path: str) -> list[ExtractedContentBlock]:
+    blocks: list[ExtractedContentBlock] = []
+    with pymupdf.open(path) as document:
+        for page_number, page in enumerate(document, start=1):
+            raw_blocks = page.get_text("blocks", sort=True)
+            for block_index, raw in enumerate(raw_blocks):
+                if len(raw) < 5 or int(raw[4] or 0) == 1:
+                    continue
+                text = str(raw[4]).strip()
+                if not text:
+                    continue
+                first_line = text.splitlines()[0].strip()
+                if QUESTION_START.match(first_line):
+                    kind = "question"
+                elif OPTION_LINE.match(first_line):
+                    kind = "option"
+                elif re.fullmatch(r"(?:Figure|Fig\\.?|Diagram|Table)\\s*\\d*.*", first_line, re.IGNORECASE):
+                    kind = "caption"
+                elif re.search(r"[=∫√^]", text) and len(text) <= 500:
+                    kind = "equation"
+                elif len(first_line) <= 100 and not first_line.endswith((".", "?", ":", ";")):
+                    kind = "heading"
+                else:
+                    kind = "paragraph"
+                blocks.append(
+                    ExtractedContentBlock(
+                        page_number=page_number,
+                        block_index=block_index,
+                        kind=kind,
+                        text=text,
+                        bbox=(float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])),
+                    )
+                )
+    return blocks
