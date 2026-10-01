@@ -3,8 +3,10 @@ package com.focusforge
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import android.content.Intent
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -100,8 +102,14 @@ class MainActivity : ComponentActivity() {
                 }
 
                 LaunchedEffect(focusState) {
-                    if (focusState == FocusState.IDLE) {
+                    if (focusState == FocusState.LOCKED) {
+                        ContextCompat.startForegroundService(
+                            this@MainActivity,
+                            Intent(this@MainActivity, com.focusforge.focus.FocusForegroundService::class.java)
+                        )
+                    } else if (focusState == FocusState.IDLE) {
                         enforcement.stopLockTask(this@MainActivity)
+                        stopService(Intent(this@MainActivity, com.focusforge.focus.FocusForegroundService::class.java))
                     }
                 }
 
