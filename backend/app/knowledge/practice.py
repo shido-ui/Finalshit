@@ -29,6 +29,7 @@ class PracticeQuestion(BaseModel):
     difficulty: str | None = None
     has_diagram: bool = False
     has_table: bool = False
+    asset_ids: list[str] = Field(default_factory=list)
 
 
 class PracticeSession(BaseModel):
@@ -157,6 +158,7 @@ class PracticeService:
                 difficulty=question.difficulty,
                 has_diagram=question.has_diagram,
                 has_table=question.has_table,
+                asset_ids=question.asset_ids,
             )
             for index, question in enumerate(selected, start=1)
         ]
