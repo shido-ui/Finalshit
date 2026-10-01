@@ -558,7 +558,8 @@ class KnowledgeStore:
             id=row["id"], document_id=row["document_id"], page_number=row["page_number"],
             asset_index=row["asset_index"], kind=row["kind"], mime_type=row["mime_type"],
             sha256=row["sha256"], byte_size=row["byte_size"], width=row["width"],
-            height=row["height"], xref=row["xref"], source_hash=row["source_hash"],
+            height=row["height"], x0=row["x0"], y0=row["y0"], x1=row["x1"], y1=row["y1"],
+            xref=row["xref"], source_hash=row["source_hash"],
             storage_path=row["storage_path"],
         )
 
