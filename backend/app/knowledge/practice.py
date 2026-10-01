@@ -245,6 +245,8 @@ class PracticeService:
             )
 
         correct = sum(results.values())
+        incorrect = sum(1 for value in results.values() if not value)
+        score = (correct * 4 - incorrect) if session.mode == PracticeMode.TEST else correct
         answered = sum(
             1 for question_id in session.question_ids
             if answers.get(question_id, "").strip()
@@ -261,7 +263,7 @@ class PracticeService:
         self.store.save_practice_session(completed)
         return PracticeResult(
             session_id=session.id,
-            score=correct,
+            score=score,
             total=total,
             answered=answered,
             correct=correct,
