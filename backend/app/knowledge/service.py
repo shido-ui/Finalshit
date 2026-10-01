@@ -200,6 +200,7 @@ class KnowledgeService:
         taxonomy_node_id: str | None = None,
         page: int | None = None,
         classification_status: ClassificationStatus | None = None,
+        include_descendants: bool = False,
     ) -> list[QuestionCandidate]:
         document = self.store.get_document(document_id)
         if document is None:
@@ -217,9 +218,19 @@ class KnowledgeService:
         if len(pages) != document.page_count:
             raise ValueError("Source PDF page count does not match recorded metadata")
 
+        taxonomy_node_ids: list[str] | None = None
+        if taxonomy_node_id is not None:
+            try:
+                taxonomy_node_ids = self.taxonomy.descendant_ids(
+                    taxonomy_node_id,
+                    include_self=True,
+                ) if include_descendants else [self.taxonomy.require(taxonomy_node_id).id]
+            except KeyError as exc:
+                raise ValueError(f"Unknown taxonomy node: {taxonomy_node_id}") from exc
+
         return self.store.get_questions(
             document_id,
-            taxonomy_node_id=taxonomy_node_id,
+            taxonomy_node_ids=taxonomy_node_ids,
             page=page,
             classification_status=classification_status,
         )

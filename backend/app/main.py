@@ -49,6 +49,8 @@ def bootstrap() -> dict[str, object]:
             "classification-confidence",
             "classification-quarantine",
             "taxonomy",
+            "jee-2026-paper-1-taxonomy",
+            "hierarchical-taxonomy-filtering",
             "provenance",
         ],
     }
@@ -119,6 +121,7 @@ def get_questions(
     taxonomy_node_id: str | None = Query(default=None, min_length=1),
     page: int | None = Query(default=None, ge=1),
     classification_status: ClassificationStatus | None = None,
+    include_descendants: bool = False,
 ) -> list[QuestionCandidate]:
     try:
         return knowledge_service.extract_questions(
@@ -126,10 +129,12 @@ def get_questions(
             taxonomy_node_id=taxonomy_node_id,
             page=page,
             classification_status=classification_status,
+            include_descendants=include_descendants,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Document not found") from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=409, detail="Document source is missing") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        status_code = 400 if str(exc).startswith("Unknown taxonomy node:") else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
