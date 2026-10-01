@@ -1,5 +1,5 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -16,6 +16,8 @@ knowledge_service = KnowledgeService(
     store=KnowledgeStore(_data_dir / "knowledge.db"),
     storage_dir=_data_dir / "documents",
 )
+
+MAX_PDF_BYTES = 50 * 1024 * 1024
 
 
 class HealthResponse(BaseModel):
@@ -64,7 +66,23 @@ async def ingest_document(
     if content_type not in {"application/pdf", "application/octet-stream"}:
         raise HTTPException(status_code=415, detail="Expected a PDF request body")
 
-    content = await request.body()
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            if int(declared_length) > MAX_PDF_BYTES:
+                raise HTTPException(status_code=413, detail="PDF exceeds 50 MiB limit")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length") from None
+
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_PDF_BYTES:
+            raise HTTPException(status_code=413, detail="PDF exceeds 50 MiB limit")
+        chunks.append(chunk)
+
+    content = b"".join(chunks)
     try:
         return knowledge_service.ingest_pdf(filename, content)
     except ValueError as exc:
@@ -93,3 +111,5 @@ def get_questions(document_id: str) -> list[QuestionCandidate]:
         raise HTTPException(status_code=404, detail="Document not found") from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=409, detail="Document source is missing") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
