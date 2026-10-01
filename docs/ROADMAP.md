@@ -5,7 +5,7 @@
 3. Knowledge Engine — **implemented**. PDF ingestion, rendering, robust cross-page question reconstruction, embedded visual asset extraction with persisted geometry/provenance, geometry-aware content-block and question↔asset association, canonical + AI-discovered taxonomy, AI-first question classification with deterministic quarantine fallback, structured question intelligence, filtered retrieval, and end-to-end persistence validation.
 4. Solution Engine — **implemented**. Structured Solution objects, server-side grounded Gemini generation, source-page provenance, confidence/evidence gates, deterministic structural validation, persistent solutions, and solution retrieval/generation APIs.
 5. Library + Practice — **implemented**. Room-backed local Library with pin/archive/Fast Mode controls, backend library persistence, bounded Fast Mode/Test question-bank sessions, quarantine exclusion, deterministic selection, server-side scoring, submission lifecycle protection, and regression coverage.
-6. Intelligence — mistake intelligence, weakness model, adaptive practice, SRS and Knowledge Graph foundations.
+6. Intelligence — **implemented**. Deterministic mistake capture, taxonomy-scoped weakness profiles, adaptive practice ranking, question-level spaced-repetition state, and persistent validated Knowledge Graph edges with API access and regression coverage.
 7. AI + Hard Mode — grounded Study Copilot and strongest supported Device Owner/Lock Task implementation.
 8. Hardening — performance, battery, rendering, accessibility, security, regression benchmark, crash reduction and release readiness.
 
