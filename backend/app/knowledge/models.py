@@ -41,6 +41,10 @@ class DocumentAsset(BaseModel):
     byte_size: int = Field(ge=0)
     width: int = Field(ge=0)
     height: int = Field(ge=0)
+    x0: float = 0.0
+    y0: float = 0.0
+    x1: float = 0.0
+    y1: float = 0.0
     xref: int = Field(ge=0)
     source_hash: str
     storage_path: str

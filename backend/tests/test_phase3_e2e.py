@@ -1,0 +1,67 @@
+import base64
+
+import pymupdf
+
+ONE_PIXEL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
+
+from app.knowledge.classifier import DEFAULT_CLASSIFIER
+from app.knowledge.service import KnowledgeService
+from app.knowledge.store import KnowledgeStore
+
+
+def build_fixture_pdf() -> bytes:
+    document = pymupdf.open()
+    page = document.new_page()
+    page.insert_text(
+        (50, 50),
+        "1. A particle has velocity v.\n"
+        "(A) 10 m/s\n"
+        "(B) 20 m/s\n"
+        "(C) 30 m/s\n"
+        "(D) 40 m/s",
+    )
+    page.insert_image(pymupdf.Rect(50, 60, 150, 120), stream=ONE_PIXEL_PNG)
+    output = document.tobytes()
+    document.close()
+    return output
+
+
+def test_phase3_ingestion_end_to_end_persists_all_core_artifacts(tmp_path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = KnowledgeService(
+        store=store,
+        storage_dir=tmp_path / "storage",
+        classifier=DEFAULT_CLASSIFIER,
+        question_intelligence=None,
+    )
+
+    record = service.ingest_pdf("fixture.pdf", build_fixture_pdf())
+
+    assert record.status.value == "ready"
+    assert record.page_count == 1
+
+    assets = store.get_document_assets(record.id)
+    blocks = store.get_content_blocks(record.id)
+    questions = store.get_questions(record.id)
+
+    assert len(assets) == 1
+    assert assets[0].source_hash == record.sha256
+    assert assets[0].x1 > assets[0].x0
+    assert assets[0].y1 > assets[0].y0
+    assert assets[0].id in blocks[0].asset_ids or any(assets[0].id in block.asset_ids for block in blocks)
+    assert blocks
+    assert any(block.kind == "question" for block in blocks)
+    assert questions
+    question = questions[0]
+    assert question.document_id == record.id
+    assert question.page_start == 1
+    assert question.page_end == 1
+    assert question.provenance
+    assert all(item.source_hash == record.sha256 for item in question.provenance)
+    assert assets[0].id in question.asset_ids
+
+    restored = store.get_document(record.id)
+    assert restored is not None
+    assert restored.sha256 == record.sha256

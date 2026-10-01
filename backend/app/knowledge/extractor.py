@@ -31,6 +31,7 @@ class ExtractedAsset:
     data: bytes
     width: int
     height: int
+    bbox: tuple[float, float, float, float]
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,8 @@ def extract_document_assets(path: str) -> list[ExtractedAsset]:
                 seen_xrefs.add(xref)
                 try:
                     extracted = document.extract_image(xref)
+                    rects = page.get_image_rects(xref)
+                    bbox = tuple(float(v) for v in (rects[0] if rects else (0, 0, 0, 0)))
                 except Exception:
                     continue
                 data = extracted.get("image", b"")
@@ -98,6 +101,7 @@ def extract_document_assets(path: str) -> list[ExtractedAsset]:
                         data=data,
                         width=int(extracted.get("width", 0) or 0),
                         height=int(extracted.get("height", 0) or 0),
+                        bbox=bbox,
                     )
                 )
     return assets
@@ -115,41 +119,42 @@ def reconstruct_question_candidates(
     current_number: str | None = None
     current_start: int | None = None
     current_lines: list[str] = []
+    last_content_page: int | None = None
 
-    def flush(end_page: int) -> None:
-        nonlocal current_number, current_start, current_lines
+    def flush(end_page: int | None = None) -> None:
+        nonlocal current_number, current_start, current_lines, last_content_page
         text = "\n".join(current_lines).strip()
         if current_start is not None and text:
             candidates.append(
                 ExtractedQuestion(
                     number=current_number,
                     page_start=current_start,
-                    page_end=end_page,
+                    page_end=end_page or last_content_page or current_start,
                     text=text,
                 )
             )
         current_number = None
         current_start = None
         current_lines = []
+        last_content_page = None
 
     for page in pages:
-        lines = page.text.splitlines()
+        lines = [line.strip() for line in page.text.splitlines() if line.strip()]
         for line in lines:
             match = QUESTION_START.match(line)
             if match:
                 if current_start is not None:
-                    flush(page.page_number)
+                    flush(last_content_page)
                 current_number = match.group(1)
                 current_start = page.page_number
-                current_lines = [line.strip()]
+                current_lines = [line]
+                last_content_page = page.page_number
             elif current_start is not None:
-                current_lines.append(line.rstrip())
-
-        if current_start is not None:
-            current_lines.append("")
+                current_lines.append(line)
+                last_content_page = page.page_number
 
     if current_start is not None:
-        flush(pages[-1].page_number if pages else current_start)
+        flush(last_content_page)
 
     return [
         candidate

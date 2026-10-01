@@ -96,15 +96,63 @@ class KnowledgeService:
         self.store.save_job(job)
         return self.process_document(job.id)
 
+    @staticmethod
+    def _boxes_related(
+        first: tuple[float, float, float, float],
+        second: tuple[float, float, float, float],
+        margin: float = 36.0,
+    ) -> bool:
+        ax0, ay0, ax1, ay1 = first
+        bx0, by0, bx1, by1 = second
+        return not (
+            ax1 + margin < bx0
+            or bx1 + margin < ax0
+            or ay1 + margin < by0
+            or by1 + margin < ay0
+        )
+
+    @staticmethod
+    def _question_asset_ids(
+        question_text: str,
+        page_start: int,
+        page_end: int,
+        assets: list[DocumentAsset],
+        content_blocks: list[ContentBlock],
+    ) -> list[str]:
+        """Associate only assets linked to text blocks that belong to the question.
+
+        Fall back to page-range assets only when no matching block-level association
+        exists, preserving compatibility with PDFs whose layout cannot be mapped.
+        """
+        normalized_question = " ".join(question_text.split()).casefold()
+        block_asset_ids: list[str] = []
+        for block in content_blocks:
+            if not (page_start <= block.page_number <= page_end):
+                continue
+            if not block.asset_ids:
+                continue
+            normalized_block = " ".join(block.text.split()).casefold()
+            if normalized_block and normalized_block in normalized_question:
+                block_asset_ids.extend(block.asset_ids)
+
+        if block_asset_ids:
+            return list(dict.fromkeys(block_asset_ids))
+
+        return list(dict.fromkeys(
+            asset.id
+            for asset in assets
+            if page_start <= asset.page_number <= page_end
+        ))
+
     def _build_question_records(
-        self, document: DocumentRecord, pages, assets: list[DocumentAsset]
+        self,
+        document: DocumentRecord,
+        pages,
+        assets: list[DocumentAsset],
+        content_blocks: list[ContentBlock],
     ) -> list[QuestionCandidate]:
         extracted = reconstruct_question_candidates(pages)
         questions: list[QuestionCandidate] = []
-        assets_by_page: dict[int, list[str]] = {}
-        for asset in assets:
-            assets_by_page.setdefault(asset.page_number, []).append(asset.id)
-
         for index, item in enumerate(extracted):
             question = QuestionCandidate(
                 id=f"{document.id}-{index + 1}",
@@ -113,11 +161,13 @@ class KnowledgeService:
                 page_end=item.page_end,
                 text=item.text,
                 number=item.number,
-                asset_ids=[
-                    asset_id
-                    for page in range(item.page_start, item.page_end + 1)
-                    for asset_id in assets_by_page.get(page, [])
-                ],
+                asset_ids=self._question_asset_ids(
+                    item.text,
+                    item.page_start,
+                    item.page_end,
+                    assets,
+                    content_blocks,
+                ),
                 provenance=[
                     Provenance(
                         document_id=document.id,
@@ -207,6 +257,7 @@ class KnowledgeService:
                         byte_size=len(item.data),
                         width=item.width,
                         height=item.height,
+                        x0=item.bbox[0], y0=item.bbox[1], x1=item.bbox[2], y1=item.bbox[3],
                         xref=item.xref,
                         source_hash=record.sha256,
                         storage_path=str(target.relative_to(self.storage_dir)),
@@ -221,6 +272,15 @@ class KnowledgeService:
                 assets_by_page.setdefault(asset.page_number, []).append(asset.id)
             for block in extracted_blocks:
                 block_id = f"{record.id}-p{block.page_number}-b{block.block_index}"
+                linked_assets = [
+                    asset.id
+                    for asset in assets
+                    if asset.page_number == block.page_number
+                    and self._boxes_related(
+                        (block.bbox[0], block.bbox[1], block.bbox[2], block.bbox[3]),
+                        (asset.x0, asset.y0, asset.x1, asset.y1),
+                    )
+                ]
                 content_blocks.append(
                     ContentBlock(
                         id=block_id,
@@ -231,14 +291,19 @@ class KnowledgeService:
                         text=block.text,
                         x0=block.bbox[0], y0=block.bbox[1],
                         x1=block.bbox[2], y1=block.bbox[3],
-                        asset_ids=assets_by_page.get(block.page_number, []),
+                        asset_ids=linked_assets,
                         source_hash=record.sha256,
                         extractor="pymupdf-content-blocks-v1",
                     )
                 )
             self.store.replace_content_blocks(record.id, content_blocks)
 
-            questions = self._build_question_records(record, pages, assets)
+            questions = self._build_question_records(
+                record,
+                pages,
+                assets,
+                content_blocks,
+            )
             self.store.replace_questions(record.id, questions)
 
             ready = running.model_copy(
