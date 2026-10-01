@@ -24,13 +24,6 @@ def make_pdf() -> bytes:
     return content
 
 
-def make_empty_pdf() -> bytes:
-    document = pymupdf.open()
-    content = document.tobytes()
-    document.close()
-    return content
-
-
 def test_question_reconstruction(tmp_path: Path):
     pdf_path = tmp_path / "focusforge-test.pdf"
     pdf_path.write_bytes(make_pdf())
@@ -92,12 +85,22 @@ def test_pending_job_can_resume(tmp_path: Path):
     assert store.pending_jobs() == []
 
 
-def test_empty_pdf_is_rejected_and_not_persisted(tmp_path: Path):
+def test_empty_content_is_rejected_and_not_persisted(tmp_path: Path):
     store = KnowledgeStore(tmp_path / "knowledge.db")
     service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
 
-    with pytest.raises(ValueError, match="no pages"):
-        service.ingest_pdf("empty.pdf", make_empty_pdf())
+    with pytest.raises(ValueError, match="empty"):
+        service.ingest_pdf("empty.pdf", b"")
+
+    assert list((tmp_path / "documents").glob("*.pdf")) == []
+
+
+def test_invalid_pdf_is_rejected_and_cleaned_up(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
+
+    with pytest.raises(ValueError, match="readable PDF"):
+        service.ingest_pdf("broken.pdf", b"not a PDF")
 
     assert list((tmp_path / "documents").glob("*.pdf")) == []
 
