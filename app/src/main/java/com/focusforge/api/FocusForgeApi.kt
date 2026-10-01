@@ -139,6 +139,39 @@ class FocusForgeApi(
         )
     }
 
+    suspend fun askCopilot(
+        documentId: String,
+        question: String,
+        pageStart: Int = 1,
+        pageEnd: Int = pageStart
+    ): CopilotAnswer = withContext(Dispatchers.IO) {
+        require(question.isNotBlank()) { "Copilot question is empty" }
+        require(pageStart >= 1 && pageEnd >= pageStart) { "Invalid source page range" }
+        val body = JSONObject().apply {
+            put("question", question)
+            put("page_start", pageStart)
+            put("page_end", pageEnd)
+        }.toString().toByteArray(Charsets.UTF_8)
+        val json = JSONObject(
+            request(
+                method = "POST",
+                path = "/api/v1/knowledge/documents/${encode(documentId)}/copilot",
+                body = body,
+                contentType = "application/json"
+            )
+        )
+        CopilotAnswer(
+            answer = json.getString("answer"),
+            citations = json.getJSONArray("citations").let { array ->
+                buildList(array.length()) {
+                    for (index in 0 until array.length()) add(array.getInt(index))
+                }
+            },
+            confidence = json.getDouble("confidence"),
+            evidence = json.getString("evidence")
+        )
+    }
+
     suspend fun getWeaknesses(limit: Int = 20): List<WeaknessProfile> = withContext(Dispatchers.IO) {
         require(limit in 1..500) { "Weakness limit must be between 1 and 500" }
         val array = JSONArray(request("GET", "/api/v1/intelligence/weaknesses?limit=$limit"))
