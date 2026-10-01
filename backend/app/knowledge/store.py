@@ -743,6 +743,15 @@ class KnowledgeStore:
             storage_path=row["storage_path"],
         )
 
+    def get_question_assets(self, question_id: str) -> list[DocumentAsset]:
+        question = self.get_question(question_id)
+        if question is None or not question.asset_ids:
+            return []
+        assets = self.get_document_assets(question.document_id)
+        wanted = set(question.asset_ids)
+        return [asset for asset in assets if asset.id in wanted]
+
+
     def get_document_assets(self, document_id: str, page: int | None = None) -> list[DocumentAsset]:
         clauses = ["document_id = ?"]
         params: list[object] = [document_id]
