@@ -1,5 +1,4 @@
-from app.knowledge.extractor import reconstruct_question_candidates
-from app.knowledge.models import PageExtraction
+from app.knowledge.extractor import PageExtraction, reconstruct_question_candidates
 
 
 def test_question_reconstruction_keeps_cross_page_boundary_exact():
