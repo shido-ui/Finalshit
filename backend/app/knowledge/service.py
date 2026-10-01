@@ -63,6 +63,31 @@ class KnowledgeService:
         self.store.save_job(job)
         return self.process_document(job.id)
 
+    def _build_question_records(
+        self, document: DocumentRecord, pages
+    ) -> list[QuestionCandidate]:
+        extracted = reconstruct_question_candidates(pages)
+        return [
+            QuestionCandidate(
+                id=f"{document.id}-{index + 1}",
+                document_id=document.id,
+                page_start=item.page_start,
+                page_end=item.page_end,
+                text=item.text,
+                number=item.number,
+                provenance=[
+                    Provenance(
+                        document_id=document.id,
+                        page_number=page,
+                        source_hash=document.sha256,
+                        extractor="pymupdf-text-v1",
+                    )
+                    for page in range(item.page_start, item.page_end + 1)
+                ],
+            )
+            for index, item in enumerate(extracted)
+        ]
+
     def process_document(self, job_id: str) -> DocumentRecord:
         job = self.store.get_job(job_id)
         if job is None:
@@ -80,10 +105,7 @@ class KnowledgeService:
             self.store.save_document(failed)
             self.store.save_job(
                 job.model_copy(
-                    update={
-                        "status": ProcessingStatus.FAILED,
-                        "updated_at": self.store.now(),
-                    }
+                    update={"status": ProcessingStatus.FAILED, "updated_at": self.store.now()}
                 )
             )
             return failed
@@ -106,7 +128,9 @@ class KnowledgeService:
             if len(pages) != record.page_count:
                 raise ValueError("Source PDF page count does not match recorded metadata")
 
-            questions = reconstruct_question_candidates(pages)
+            questions = self._build_question_records(record, pages)
+            self.store.replace_questions(record.id, questions)
+
             ready = running.model_copy(
                 update={
                     "status": ProcessingStatus.READY,
@@ -116,10 +140,7 @@ class KnowledgeService:
             self.store.save_document(ready)
             self.store.save_job(
                 running_job.model_copy(
-                    update={
-                        "status": ProcessingStatus.READY,
-                        "updated_at": self.store.now(),
-                    }
+                    update={"status": ProcessingStatus.READY, "updated_at": self.store.now()}
                 )
             )
             return ready
@@ -130,10 +151,7 @@ class KnowledgeService:
             self.store.save_document(failed)
             self.store.save_job(
                 running_job.model_copy(
-                    update={
-                        "status": ProcessingStatus.FAILED,
-                        "updated_at": self.store.now(),
-                    }
+                    update={"status": ProcessingStatus.FAILED, "updated_at": self.store.now()}
                 )
             )
             raise
@@ -149,7 +167,12 @@ class KnowledgeService:
                     results.append(failed)
         return results
 
-    def extract_questions(self, document_id: str) -> list[QuestionCandidate]:
+    def extract_questions(
+        self,
+        document_id: str,
+        taxonomy_node_id: str | None = None,
+        page: int | None = None,
+    ) -> list[QuestionCandidate]:
         document = self.store.get_document(document_id)
         if document is None:
             raise KeyError(document_id)
@@ -166,25 +189,8 @@ class KnowledgeService:
         if len(pages) != document.page_count:
             raise ValueError("Source PDF page count does not match recorded metadata")
 
-        extracted = reconstruct_question_candidates(pages)
-
-        return [
-            QuestionCandidate(
-                id=f"{document_id}-{index + 1}",
-                document_id=document_id,
-                page_start=item.page_start,
-                page_end=item.page_end,
-                text=item.text,
-                number=item.number,
-                provenance=[
-                    Provenance(
-                        document_id=document_id,
-                        page_number=page,
-                        source_hash=document.sha256,
-                        extractor="pymupdf-text-v1",
-                    )
-                    for page in range(item.page_start, item.page_end + 1)
-                ],
-            )
-            for index, item in enumerate(extracted)
-        ]
+        return self.store.get_questions(
+            document_id,
+            taxonomy_node_id=taxonomy_node_id,
+            page=page,
+        )
