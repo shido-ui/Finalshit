@@ -2,4 +2,8 @@
 <resources>
     <string name="app_name">FocusForge</string>
     <string name="device_admin_description">Allows FocusForge to manage supported dedicated-device focus sessions when provisioned as the device owner.</string>
+    <string name="start_focus_description">Start the selected FocusForge study session.</string>
+    <string name="end_focus_description">End the active FocusForge study session.</string>
+    <string name="import_pdf_description">Choose a PDF to import into FocusForge.</string>
+    <string name="usage_access_description">Open Android usage access settings for FocusForge.</string>
 </resources>
