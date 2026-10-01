@@ -11,12 +11,14 @@ from app.knowledge.models import (
     DocumentAsset,
     DocumentRecord,
     QuestionCandidate,
+    Solution,
     TaxonomyNode,
     TaxonomyProposal,
     TaxonomyProposalResolution,
 )
 from app.knowledge.classifier_ai import default_question_classifier
 from app.knowledge.question_intelligence import default_question_intelligence
+from app.knowledge.solution_engine import SolutionEngine, default_solution_provider
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
@@ -30,6 +32,7 @@ knowledge_service = KnowledgeService(
     taxonomy_proposal_provider=GeminiTaxonomyProposalProvider(),
     classifier=default_question_classifier(),
     question_intelligence=default_question_intelligence(),
+    solution_engine=SolutionEngine(default_solution_provider()),
 )
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
@@ -38,6 +41,37 @@ MAX_PDF_BYTES = 50 * 1024 * 1024
 class HealthResponse(BaseModel):
     status: str
     service: str
+
+
+
+@app.post(
+    "/api/v1/knowledge/questions/{question_id}/solution",
+    response_model=Solution,
+)
+def generate_question_solution(question_id: str) -> Solution:
+    try:
+        return knowledge_service.generate_solution(question_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Question not found") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail="Document source is missing") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        if str(exc) == "GEMINI_API_KEY is not configured":
+            raise HTTPException(status_code=503, detail="Solution AI provider is not configured") from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/knowledge/questions/{question_id}/solution",
+    response_model=Solution,
+)
+def get_question_solution(question_id: str) -> Solution:
+    solution = knowledge_service.get_solution(question_id)
+    if solution is None:
+        raise HTTPException(status_code=404, detail="Solution not found")
+    return solution
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -78,6 +112,10 @@ def bootstrap() -> dict[str, object]:
             "rich-content-block-extraction",
             "content-block-persistence",
             "provenance",
+            "structured-solutions",
+            "grounded-solution-generation",
+            "solution-validation",
+            "solution-provenance",
         ],
     }
 
