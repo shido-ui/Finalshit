@@ -1,5 +1,7 @@
 package com.focusforge.ui
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +52,7 @@ fun PracticeCard(
     var result by remember { mutableStateOf<PracticeResult?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var completedQuestions by remember { mutableStateOf<List<PracticeQuestion>>(emptyList()) }
     val answers = remember { mutableStateMapOf<String, String>() }
 
     LaunchedEffect(adaptiveLaunchToken) {
@@ -132,7 +136,8 @@ fun PracticeCard(
                         QuestionCard(
                             question = question,
                             selectedAnswer = answers[question.id].orEmpty(),
-                            onAnswer = { answers[question.id] = it }
+                            onAnswer = { answers[question.id] = it },
+                            repository = repository
                         )
                     }
                 }
@@ -146,6 +151,7 @@ fun PracticeCard(
                                 repository.submitPractice(sessionId!!, answers.toMap())
                             }.onSuccess {
                                 result = it
+                                completedQuestions = questions
                                 sessionId = null
                                 questions = emptyList()
                             }.onFailure {
@@ -160,9 +166,23 @@ fun PracticeCard(
                 }
             }
 
-            result?.let {
-                Text("Result: ${it.correct}/${it.total} correct • ${it.percentage}%", style = MaterialTheme.typography.titleSmall)
-                Text("${it.answered} answered", style = MaterialTheme.typography.bodySmall)
+            result?.let { completed ->
+                Text(
+                    "Result: " + completed.correct + "/" + completed.total +
+                        " correct • " + completed.percentage + "%",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Text(completed.answered.toString() + " answered", style = MaterialTheme.typography.bodySmall)
+                completedQuestions.forEach { question ->
+                    Text(
+                        "Q" + question.position + ": " + when (completed.questionResults[question.id]) {
+                            true -> "Correct"
+                            false -> "Incorrect"
+                            null -> "Not graded"
+                        },
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
 
             if (questions.isEmpty() && libraryItems.isEmpty()) {
@@ -179,8 +199,12 @@ fun PracticeCard(
 private fun QuestionCard(
     question: PracticeQuestion,
     selectedAnswer: String,
-    onAnswer: (String) -> Unit
+    onAnswer: (String) -> Unit,
+    repository: BackendRepository
 ) {
+    var solution by remember(question.id) { mutableStateOf<com.focusforge.api.QuestionSolution?>(null) }
+    var assetBytes by remember(question.id) { mutableStateOf<ByteArray?>(null) }
+    var detailBusy by remember(question.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("${question.position}. ${question.text}", style = MaterialTheme.typography.bodyLarge)
@@ -195,6 +219,56 @@ private fun QuestionCard(
                     ).joinToString(" • "),
                     style = MaterialTheme.typography.bodySmall
                 )
+                OutlinedButton(
+                    enabled = !detailBusy,
+                    onClick = {
+                        detailBusy = true
+                        kotlinx.coroutines.MainScope().launch {
+                            runCatching {
+                                repository.getQuestionAssets(question.id).firstOrNull()?.let { asset ->
+                                    assetBytes = repository.getAssetBytes(asset.id)
+                                }
+                            }
+                            detailBusy = false
+                        }
+                    }
+                ) {
+                    Text(if (detailBusy) "Loading visual…" else "View visual")
+                }
+                assetBytes?.let { bytes ->
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let { bitmap ->
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Question visual",
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            OutlinedButton(
+                enabled = !detailBusy,
+                onClick = {
+                    detailBusy = true
+                    kotlinx.coroutines.MainScope().launch {
+                        runCatching {
+                            solution = repository.getQuestionSolution(question.id)
+                        }.recoverCatching {
+                            solution = repository.generateQuestionSolution(question.id)
+                        }
+                        detailBusy = false
+                    }
+                }
+            ) {
+                Text(if (detailBusy) "Loading solution…" else "View solution")
+            }
+            solution?.let { item ->
+                Text("Method: " + item.method, style = MaterialTheme.typography.bodyMedium)
+                item.steps.forEachIndexed { index, step ->
+                    Text((index + 1).toString() + ". " + step, style = MaterialTheme.typography.bodySmall)
+                }
+                Text("Final answer: " + item.finalAnswer, style = MaterialTheme.typography.bodyMedium)
+                Text(item.validationReason, style = MaterialTheme.typography.bodySmall)
             }
 
             if (question.options.isNotEmpty()) {
