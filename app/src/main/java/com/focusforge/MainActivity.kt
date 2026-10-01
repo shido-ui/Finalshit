@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
         val manager = (application as FocusForgeApplication).sessionManager
         val catalog = AppCatalog(this)
         val enforcement = FocusEnforcementController(this)
+        val libraryRepository = (application as FocusForgeApplication).libraryRepository
 
         setContent {
             MaterialTheme {
