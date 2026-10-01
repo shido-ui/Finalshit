@@ -30,6 +30,22 @@ class Provenance(BaseModel):
     extractor: str
 
 
+class DocumentAsset(BaseModel):
+    id: str
+    document_id: str
+    page_number: int
+    asset_index: int
+    kind: str = "image"
+    mime_type: str
+    sha256: str
+    byte_size: int = Field(ge=0)
+    width: int = Field(ge=0)
+    height: int = Field(ge=0)
+    xref: int = Field(ge=0)
+    source_hash: str
+    storage_path: str
+
+
 class QuestionCandidate(BaseModel):
     id: str
     document_id: str
@@ -48,6 +64,7 @@ class QuestionCandidate(BaseModel):
     intelligence_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     intelligence_reason: str | None = None
     intelligence_provider: str | None = None
+    asset_ids: list[str] = Field(default_factory=list)
     taxonomy_node_id: str | None = None
     classification_status: ClassificationStatus = ClassificationStatus.UNCLASSIFIED
     classification_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -70,7 +87,6 @@ class ProcessingJob(BaseModel):
     document_id: str
     status: ProcessingStatus
     updated_at: str
-
 
 
 class TaxonomyProposalStatus(str, Enum):

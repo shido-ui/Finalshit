@@ -7,10 +7,16 @@ from pathlib import Path
 import pymupdf
 
 from .classifier import DEFAULT_CLASSIFIER, QuestionClassifier
-from .extractor import extract_document, reconstruct_question_candidates
+from .extractor import (
+    asset_id,
+    extract_document,
+    extract_document_assets,
+    reconstruct_question_candidates,
+)
 from .question_intelligence import HybridQuestionIntelligence
 from .models import (
     ClassificationStatus,
+    DocumentAsset,
     DocumentRecord,
     ProcessingJob,
     ProcessingStatus,
@@ -89,10 +95,13 @@ class KnowledgeService:
         return self.process_document(job.id)
 
     def _build_question_records(
-        self, document: DocumentRecord, pages
+        self, document: DocumentRecord, pages, assets: list[DocumentAsset]
     ) -> list[QuestionCandidate]:
         extracted = reconstruct_question_candidates(pages)
         questions: list[QuestionCandidate] = []
+        assets_by_page: dict[int, list[str]] = {}
+        for asset in assets:
+            assets_by_page.setdefault(asset.page_number, []).append(asset.id)
 
         for index, item in enumerate(extracted):
             question = QuestionCandidate(
@@ -102,6 +111,11 @@ class KnowledgeService:
                 page_end=item.page_end,
                 text=item.text,
                 number=item.number,
+                asset_ids=[
+                    asset_id
+                    for page in range(item.page_start, item.page_end + 1)
+                    for asset_id in assets_by_page.get(page, [])
+                ],
                 provenance=[
                     Provenance(
                         document_id=document.id,
@@ -171,7 +185,34 @@ class KnowledgeService:
             if len(pages) != record.page_count:
                 raise ValueError("Source PDF page count does not match recorded metadata")
 
-            questions = self._build_question_records(record, pages)
+            extracted_assets = extract_document_assets(str(source_path))
+            asset_root = self.storage_dir / "assets" / record.id
+            asset_root.mkdir(parents=True, exist_ok=True)
+            assets: list[DocumentAsset] = []
+            for item in extracted_assets:
+                current_id = asset_id(record.id, item)
+                filename = f"{current_id}.{item.extension}"
+                target = asset_root / filename
+                target.write_bytes(item.data)
+                assets.append(
+                    DocumentAsset(
+                        id=current_id,
+                        document_id=record.id,
+                        page_number=item.page_number,
+                        asset_index=item.asset_index,
+                        mime_type=item.mime_type,
+                        sha256=hashlib.sha256(item.data).hexdigest(),
+                        byte_size=len(item.data),
+                        width=item.width,
+                        height=item.height,
+                        xref=item.xref,
+                        source_hash=record.sha256,
+                        storage_path=str(target.relative_to(self.storage_dir)),
+                    )
+                )
+            self.store.replace_document_assets(record.id, assets)
+
+            questions = self._build_question_records(record, pages, assets)
             self.store.replace_questions(record.id, questions)
 
             ready = running.model_copy(

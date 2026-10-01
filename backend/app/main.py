@@ -2,10 +2,12 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.knowledge.models import (
     ClassificationStatus,
+    DocumentAsset,
     DocumentRecord,
     QuestionCandidate,
     TaxonomyNode,
@@ -69,6 +71,9 @@ def bootstrap() -> dict[str, object]:
             "question-intelligence",
             "answer-option-extraction",
             "question-metadata-extraction",
+            "visual-asset-extraction",
+            "asset-persistence",
+            "question-asset-association",
             "provenance",
         ],
     }
@@ -184,6 +189,39 @@ def reject_taxonomy_proposal(
         raise HTTPException(status_code=404, detail="Taxonomy proposal not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/knowledge/documents/{document_id}/assets",
+    response_model=list[DocumentAsset],
+)
+def get_document_assets(
+    document_id: str,
+    page: int | None = Query(default=None, ge=1),
+) -> list[DocumentAsset]:
+    if knowledge_service.store.get_document(document_id) is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return knowledge_service.store.get_document_assets(document_id, page=page)
+
+
+@app.get("/api/v1/knowledge/assets/{asset_id}")
+def get_asset(asset_id: str) -> FileResponse:
+    asset = knowledge_service.store.get_document_asset(asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    root = knowledge_service.storage_dir.resolve()
+    path = (knowledge_service.storage_dir / asset.storage_path).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="Invalid asset storage path") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="Asset file is missing")
+    return FileResponse(
+        path,
+        media_type=asset.mime_type,
+        filename=path.name,
+    )
 
 
 @app.get(
