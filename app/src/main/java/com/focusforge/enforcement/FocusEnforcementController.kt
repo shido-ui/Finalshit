@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.provider.Settings
 
 data class EnforcementStatus(
     val deviceOwner: Boolean,
@@ -16,6 +17,19 @@ class FocusEnforcementController(context: Context) {
         appContext.getSystemService(DevicePolicyManager::class.java)
     private val adminComponent =
         ComponentName(appContext, FocusDeviceAdminReceiver::class.java)
+
+    fun accessibilityEnabled(): Boolean {
+        val enabled = Settings.Secure.getString(
+            appContext.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty()
+        val expected = ComponentName(appContext, FocusAccessibilityService::class.java).flattenToString()
+        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+    }
+
+    fun openAccessibilitySettings(activity: Activity) {
+        activity.startActivity(android.content.Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
 
     fun status(): EnforcementStatus {
         val owner = devicePolicyManager.isDeviceOwnerApp(appContext.packageName)
