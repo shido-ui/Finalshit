@@ -4,7 +4,7 @@ import pytest
 import pymupdf
 
 from app.knowledge.extractor import extract_document, reconstruct_question_candidates
-from app.knowledge.models import DocumentRecord, ProcessingJob, ProcessingStatus
+from app.knowledge.models import DocumentRecord, ProcessingJob, ProcessingStatus, Provenance, QuestionCandidate
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy import Taxonomy, TaxonomyNode
@@ -50,6 +50,70 @@ def test_ingestion_is_provenanced_and_resumable(tmp_path: Path):
     assert len(questions) == 2
     assert questions[0].provenance[0].source_hash == record.sha256
     assert questions[0].provenance[0].page_number == 1
+
+
+def test_indexed_questions_survive_service_reload_and_filter(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    service = KnowledgeService(store=store, storage_dir=tmp_path / "documents")
+    record = service.ingest_pdf("sample.pdf", make_pdf())
+
+    indexed = store.get_questions(record.id)
+    assert len(indexed) == 2
+
+    classified = indexed[0].model_copy(
+        update={"taxonomy_node_id": "physics", "classification_confidence": 0.95}
+    )
+    store.replace_questions(record.id, [classified, indexed[1]])
+
+    reloaded_store = KnowledgeStore(tmp_path / "knowledge.db")
+    reloaded_service = KnowledgeService(
+        store=reloaded_store, storage_dir=tmp_path / "documents"
+    )
+
+    assert len(reloaded_service.extract_questions(record.id)) == 2
+    physics = reloaded_service.extract_questions(
+        record.id, taxonomy_node_id="physics"
+    )
+    assert len(physics) == 1
+    assert physics[0].id == classified.id
+    assert physics[0].classification_confidence == 0.95
+
+    page_matches = reloaded_service.extract_questions(record.id, page=1)
+    assert len(page_matches) == 2
+
+
+def test_replace_questions_is_atomic_per_document(tmp_path: Path):
+    store = KnowledgeStore(tmp_path / "knowledge.db")
+    store.save_document(
+        DocumentRecord(
+            id="doc",
+            filename="doc.pdf",
+            sha256="a" * 64,
+            page_count=1,
+            status=ProcessingStatus.READY,
+        )
+    )
+    question = QuestionCandidate(
+        id="doc-1",
+        document_id="doc",
+        page_start=1,
+        page_end=1,
+        text="What is force?",
+        provenance=[
+            Provenance(
+                document_id="doc",
+                page_number=1,
+                source_hash="a" * 64,
+                extractor="test",
+            )
+        ],
+    )
+
+    store.replace_questions("doc", [question])
+    assert len(store.get_questions("doc")) == 1
+
+    store.replace_questions("doc", [])
+    assert store.get_questions("doc") == []
 
 
 def test_pending_job_can_resume(tmp_path: Path):
