@@ -1,0 +1,13 @@
+[project]
+name = "focusforge-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.34,<1.0",
+    "pydantic>=2.10,<3.0",
+    "pymupdf>=1.25,<2.0",
+    "sympy>=1.13,<2.0",
+]
+[dependency-groups]
+dev = ["pytest>=8.3,<9.0", "httpx>=0.28,<1.0", "ruff>=0.9,<1.0"]
