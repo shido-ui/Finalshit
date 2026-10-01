@@ -8,6 +8,7 @@ import pymupdf
 
 from .classifier import DEFAULT_CLASSIFIER, QuestionClassifier
 from .extractor import extract_document, reconstruct_question_candidates
+from .question_intelligence import HybridQuestionIntelligence
 from .models import (
     ClassificationStatus,
     DocumentRecord,
@@ -36,6 +37,7 @@ class KnowledgeService:
         taxonomy: Taxonomy = DEFAULT_TAXONOMY,
         classifier: QuestionClassifier = DEFAULT_CLASSIFIER,
         taxonomy_proposal_provider: TaxonomyProposalProvider | None = None,
+        question_intelligence: HybridQuestionIntelligence | None = None,
     ) -> None:
         self.store = store
         self.storage_dir = Path(storage_dir)
@@ -44,6 +46,7 @@ class KnowledgeService:
         self.taxonomy = self.registry.taxonomy if taxonomy is DEFAULT_TAXONOMY else taxonomy
         self.classifier = classifier
         self.taxonomy_proposal_provider = taxonomy_proposal_provider
+        self.question_intelligence = question_intelligence
 
     def ingest_pdf(self, filename: str, content: bytes) -> DocumentRecord:
         if not content:
@@ -109,6 +112,8 @@ class KnowledgeService:
                     for page in range(item.page_start, item.page_end + 1)
                 ],
             )
+            if self.question_intelligence is not None:
+                question = self.question_intelligence.analyze(question)
             result = self.classifier.classify(question, self.taxonomy)
             questions.append(
                 question.model_copy(
