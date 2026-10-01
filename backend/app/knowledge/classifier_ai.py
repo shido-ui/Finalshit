@@ -49,7 +49,7 @@ class GeminiQuestionClassificationProvider:
             object.__setattr__(
                 self,
                 "model",
-                os.getenv("GEMINI_QUESTION_CLASSIFICATION_MODEL", "gemini-3-flash"),
+                os.getenv("GEMINI_QUESTION_CLASSIFICATION_MODEL", os.getenv("GEMINI_MODEL", "gemini-3-flash")),
             )
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
