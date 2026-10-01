@@ -38,8 +38,6 @@ def bootstrap() -> dict[str, object]:
             "question-reconstruction",
             "taxonomy",
             "provenance",
-            "solutions",
-            "verification",
         ],
     }
 
@@ -93,3 +91,5 @@ def get_questions(document_id: str) -> list[QuestionCandidate]:
         return knowledge_service.extract_questions(document_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Document not found") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail="Document source is missing") from exc
