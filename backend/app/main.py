@@ -12,6 +12,7 @@ from app.knowledge.models import (
     DocumentRecord,
     QuestionCandidate,
     Solution,
+    LibraryItem,
     TaxonomyNode,
     TaxonomyProposal,
     TaxonomyProposalResolution,
@@ -19,6 +20,7 @@ from app.knowledge.models import (
 from app.knowledge.classifier_ai import default_question_classifier
 from app.knowledge.question_intelligence import default_question_intelligence
 from app.knowledge.solution_engine import SolutionEngine, default_solution_provider
+from app.knowledge.practice import PracticeResult, PracticeQuestion, PracticeService
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
@@ -26,6 +28,8 @@ from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
 app = FastAPI(title="FocusForge AI Gateway", version="0.1.0")
 
 _data_dir = Path(os.getenv("FOCUSFORGE_DATA_DIR", "data"))
+practice_service = PracticeService(KnowledgeStore(_data_dir / "knowledge.db"))
+
 knowledge_service = KnowledgeService(
     store=KnowledgeStore(_data_dir / "knowledge.db"),
     storage_dir=_data_dir / "documents",
@@ -74,6 +78,108 @@ def get_question_solution(question_id: str) -> Solution:
     return solution
 
 
+
+class PracticeStartRequest(BaseModel):
+    mode: str = Field(default="fast", max_length=16)
+    limit: int = Field(default=10, ge=1, le=100)
+    document_id: str | None = None
+    taxonomy_node_id: str | None = None
+    seed: int | None = None
+
+
+class PracticeStartResponse(BaseModel):
+    session: object
+    questions: list[PracticeQuestion]
+
+
+class PracticeSubmitRequest(BaseModel):
+    answers: dict[str, str] = Field(default_factory=dict)
+
+
+@app.get("/api/v1/library", response_model=list[LibraryItem])
+def get_library(include_archived: bool = False) -> list[LibraryItem]:
+    return knowledge_service.store.get_library_items(include_archived=include_archived)
+
+
+@app.patch("/api/v1/library/{document_id}", response_model=LibraryItem)
+def update_library_item(
+    document_id: str,
+    pinned: bool | None = None,
+    archived: bool | None = None,
+    fast_mode_enabled: bool | None = None,
+) -> LibraryItem:
+    document = knowledge_service.store.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    current = knowledge_service.store.get_library_item(document_id)
+    if current is None:
+        now = knowledge_service.store.now()
+        current = LibraryItem(
+            id=f"library-{document_id}",
+            document_id=document_id,
+            title=document.filename,
+            created_at=now,
+            updated_at=now,
+        )
+    updated = current.model_copy(
+        update={
+            "pinned": current.pinned if pinned is None else pinned,
+            "archived": current.archived if archived is None else archived,
+            "fast_mode_enabled": (
+                current.fast_mode_enabled if fast_mode_enabled is None else fast_mode_enabled
+            ),
+            "updated_at": knowledge_service.store.now(),
+        }
+    )
+    knowledge_service.store.save_library_item(updated)
+    return updated
+
+
+@app.post("/api/v1/practice/sessions", response_model=PracticeStartResponse)
+def start_practice(request: PracticeStartRequest) -> PracticeStartResponse:
+    if request.document_id is not None:
+        questions = knowledge_service.store.get_questions(request.document_id)
+        if knowledge_service.store.get_document(request.document_id) is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+    else:
+        library = knowledge_service.store.get_library_items()
+        questions = [
+            question
+            for item in library
+            for question in knowledge_service.store.get_questions(item.document_id)
+        ]
+
+    if request.taxonomy_node_id is not None:
+        try:
+            node_ids = knowledge_service.taxonomy.descendant_ids(
+                request.taxonomy_node_id, include_self=True
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail="Unknown taxonomy node") from exc
+        questions = [
+            question for question in questions
+            if question.taxonomy_node_id in node_ids
+        ]
+
+    try:
+        session, public_questions = practice_service.create_session(
+            questions, request.mode, request.limit, request.seed
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return PracticeStartResponse(session=session, questions=public_questions)
+
+
+@app.post("/api/v1/practice/sessions/{session_id}/submit", response_model=PracticeResult)
+def submit_practice(session_id: str, request: PracticeSubmitRequest) -> PracticeResult:
+    try:
+        return practice_service.submit(session_id, request.answers)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Practice session not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok", service="focusforge-backend")
@@ -116,6 +222,11 @@ def bootstrap() -> dict[str, object]:
             "grounded-solution-generation",
             "solution-validation",
             "solution-provenance",
+            "local-library",
+            "fast-mode",
+            "question-bank",
+            "practice-sessions",
+            "practice-scoring",
         ],
     }
 
