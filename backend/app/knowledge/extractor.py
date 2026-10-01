@@ -165,7 +165,7 @@ def extract_content_blocks(path: str) -> list[ExtractedContentBlock]:
         for page_number, page in enumerate(document, start=1):
             raw_blocks = page.get_text("blocks", sort=True)
             for block_index, raw in enumerate(raw_blocks):
-                if len(raw) < 5 or int(raw[4] or 0) == 1:
+                if len(raw) < 7 or int(raw[6] or 0) != 0:
                     continue
                 text = str(raw[4]).strip()
                 if not text:
