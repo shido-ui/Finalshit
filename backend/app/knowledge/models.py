@@ -114,6 +114,18 @@ class Solution(BaseModel):
     provenance: list[Provenance] = Field(default_factory=list)
 
 
+
+class LibraryItem(BaseModel):
+    id: str
+    document_id: str
+    title: str
+    pinned: bool = False
+    archived: bool = False
+    fast_mode_enabled: bool = True
+    created_at: str
+    updated_at: str
+
+
 class DocumentRecord(BaseModel):
     id: str
     filename: str
