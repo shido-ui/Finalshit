@@ -111,8 +111,45 @@ class KnowledgeService:
             or by1 + margin < ay0
         )
 
+    @staticmethod
+    def _question_asset_ids(
+        question_text: str,
+        page_start: int,
+        page_end: int,
+        assets: list[DocumentAsset],
+        content_blocks: list[ContentBlock],
+    ) -> list[str]:
+        """Associate only assets linked to text blocks that belong to the question.
+
+        Fall back to page-range assets only when no matching block-level association
+        exists, preserving compatibility with PDFs whose layout cannot be mapped.
+        """
+        normalized_question = " ".join(question_text.split()).casefold()
+        block_asset_ids: list[str] = []
+        for block in content_blocks:
+            if not (page_start <= block.page_number <= page_end):
+                continue
+            if not block.asset_ids:
+                continue
+            normalized_block = " ".join(block.text.split()).casefold()
+            if normalized_block and normalized_block in normalized_question:
+                block_asset_ids.extend(block.asset_ids)
+
+        if block_asset_ids:
+            return list(dict.fromkeys(block_asset_ids))
+
+        return list(dict.fromkeys(
+            asset.id
+            for asset in assets
+            if page_start <= asset.page_number <= page_end
+        ))
+
     def _build_question_records(
-        self, document: DocumentRecord, pages, assets: list[DocumentAsset]
+        self,
+        document: DocumentRecord,
+        pages,
+        assets: list[DocumentAsset],
+        content_blocks: list[ContentBlock],
     ) -> list[QuestionCandidate]:
         extracted = reconstruct_question_candidates(pages)
         questions: list[QuestionCandidate] = []
@@ -124,11 +161,13 @@ class KnowledgeService:
                 page_end=item.page_end,
                 text=item.text,
                 number=item.number,
-                asset_ids=[
-                    asset.id
-                    for asset in assets
-                    if item.page_start <= asset.page_number <= item.page_end
-                ],
+                asset_ids=self._question_asset_ids(
+                    item.text,
+                    item.page_start,
+                    item.page_end,
+                    assets,
+                    content_blocks,
+                ),
                 provenance=[
                     Provenance(
                         document_id=document.id,
@@ -259,7 +298,12 @@ class KnowledgeService:
                 )
             self.store.replace_content_blocks(record.id, content_blocks)
 
-            questions = self._build_question_records(record, pages, assets)
+            questions = self._build_question_records(
+                record,
+                pages,
+                assets,
+                content_blocks,
+            )
             self.store.replace_questions(record.id, questions)
 
             ready = running.model_copy(
