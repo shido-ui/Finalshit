@@ -32,6 +32,13 @@ class Taxonomy:
                 raise ValueError(
                     f"Taxonomy node {node.id!r} references missing parent {node.parent_id!r}"
                 )
+
+        # Detect cycles before validating level relationships so malformed cyclic
+        # graphs report their structural root cause deterministically.
+        for node_id in self._nodes:
+            self._validate_acyclic(node_id)
+
+        for node in self._nodes.values():
             if node.parent_id is None and node.level != "subject":
                 raise ValueError(
                     f"Non-subject taxonomy node {node.id!r} must have a parent"
@@ -48,9 +55,6 @@ class Taxonomy:
                         f"Taxonomy node {node.id!r} at level {node.level!r} "
                         f"must have a {expected_parent!r} parent"
                     )
-
-        for node_id in self._nodes:
-            self._validate_acyclic(node_id)
 
     def _validate_acyclic(self, node_id: str) -> None:
         seen: set[str] = set()
