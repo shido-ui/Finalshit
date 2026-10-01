@@ -1,4 +1,4 @@
-from app.knowledge.models import TaxonomyProposalStatus
+from app.knowledge.models import DocumentRecord, ProcessingStatus, TaxonomyProposalStatus
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy import DEFAULT_TAXONOMY
 from app.knowledge.taxonomy_ai import (
@@ -108,6 +108,16 @@ def test_ai_proposal_parent_cycle_is_quarantined_by_resolver():
 def test_taxonomy_proposals_persist_with_pending_status(tmp_path):
     store = KnowledgeStore(tmp_path / "knowledge.db")
     from app.knowledge.models import TaxonomyProposal
+
+    store.save_document(
+        DocumentRecord(
+            id="doc-1",
+            filename="doc.pdf",
+            sha256="a" * 64,
+            page_count=1,
+            status=ProcessingStatus.READY,
+        )
+    )
 
     proposal = TaxonomyProposal(
         id="doc-1-new-topic",
