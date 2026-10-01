@@ -5,11 +5,14 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .taxonomy import DEFAULT_TAXONOMY
+
 from .models import (
     ClassificationStatus,
     DocumentRecord,
     TaxonomyProposal,
     TaxonomyProposalStatus,
+    TaxonomyNode,
     ProcessingJob,
     ProcessingStatus,
     Provenance,
@@ -58,6 +61,23 @@ class KnowledgeStore:
                 );
 
 
+                CREATE TABLE IF NOT EXISTS taxonomy_nodes (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    level TEXT NOT NULL,
+                    parent_id TEXT,
+                    source TEXT NOT NULL,
+                    document_id TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(parent_id) REFERENCES taxonomy_nodes(id),
+                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_taxonomy_nodes_parent
+                    ON taxonomy_nodes(parent_id);
+                CREATE INDEX IF NOT EXISTS idx_taxonomy_nodes_level
+                    ON taxonomy_nodes(level);
+
                 CREATE TABLE IF NOT EXISTS taxonomy_proposals (
                     id TEXT PRIMARY KEY,
                     document_id TEXT NOT NULL,
@@ -68,7 +88,10 @@ class KnowledgeStore:
                     evidence TEXT NOT NULL,
                     status TEXT NOT NULL,
                     provider TEXT NOT NULL,
-                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                    resolved_node_id TEXT,
+                    resolution_reason TEXT,
+                    FOREIGN KEY(document_id) REFERENCES documents(id),
+                    FOREIGN KEY(resolved_node_id) REFERENCES taxonomy_nodes(id)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_taxonomy_proposals_document
@@ -84,6 +107,8 @@ class KnowledgeStore:
                 """
             )
             self._migrate_questions(connection)
+            self._migrate_taxonomy_proposals(connection)
+            self._seed_taxonomy(connection)
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_questions_classification "
                 "ON questions(classification_status)"
@@ -110,6 +135,39 @@ class KnowledgeStore:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
+
+    @staticmethod
+    def _migrate_taxonomy_proposals(connection: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(taxonomy_proposals)").fetchall()
+        }
+        migrations = {
+            "resolved_node_id": "TEXT",
+            "resolution_reason": "TEXT",
+        }
+        for name, definition in migrations.items():
+            if name not in columns:
+                connection.execute(
+                    f"ALTER TABLE taxonomy_proposals ADD COLUMN {name} {definition}"
+                )
+
+    @staticmethod
+    def _seed_taxonomy(connection: sqlite3.Connection) -> None:
+        if connection.execute("SELECT 1 FROM taxonomy_nodes LIMIT 1").fetchone():
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        connection.executemany(
+            """
+            INSERT INTO taxonomy_nodes
+                (id, name, level, parent_id, source, document_id, created_at)
+            VALUES (?, ?, ?, ?, ?, NULL, ?)
+            """,
+            [
+                (node.id, node.name, node.level, node.parent_id, "canonical", now)
+                for node in DEFAULT_TAXONOMY.all()
+            ],
+        )
 
     def save_document(self, document: DocumentRecord) -> None:
         with self._connect() as connection:
@@ -290,6 +348,49 @@ class KnowledgeStore:
         return datetime.now(timezone.utc).isoformat()
 
 
+    def get_taxonomy_nodes(self) -> list[TaxonomyNode]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, name, level, parent_id
+                FROM taxonomy_nodes
+                ORDER BY level, parent_id, name, id
+                """
+            ).fetchall()
+        return [
+            TaxonomyNode(
+                id=row["id"],
+                name=row["name"],
+                level=row["level"],
+                parent_id=row["parent_id"],
+            )
+            for row in rows
+        ]
+
+    def save_taxonomy_node(
+        self,
+        node: TaxonomyNode,
+        source: str,
+        document_id: str | None = None,
+    ) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO taxonomy_nodes
+                    (id, name, level, parent_id, source, document_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    node.id,
+                    node.name,
+                    node.level,
+                    node.parent_id,
+                    source,
+                    document_id,
+                    self.now(),
+                ),
+            )
+
     def save_taxonomy_proposals(
         self, proposals: list[TaxonomyProposal]
     ) -> None:
@@ -300,17 +401,23 @@ class KnowledgeStore:
                 """
                 INSERT INTO taxonomy_proposals (
                     id, document_id, parent_id, name, level, confidence,
-                    evidence, status, provider
+                    evidence, status, provider, resolved_node_id, resolution_reason
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     parent_id=excluded.parent_id,
                     name=excluded.name,
                     level=excluded.level,
                     confidence=excluded.confidence,
                     evidence=excluded.evidence,
-                    status=excluded.status,
-                    provider=excluded.provider
+                    provider=excluded.provider,
+                    resolved_node_id=COALESCE(taxonomy_proposals.resolved_node_id, excluded.resolved_node_id),
+                    resolution_reason=COALESCE(taxonomy_proposals.resolution_reason, excluded.resolution_reason),
+                    status=CASE
+                        WHEN taxonomy_proposals.status IN ('approved', 'rejected')
+                        THEN taxonomy_proposals.status
+                        ELSE excluded.status
+                    END
                 """,
                 [
                     (
@@ -323,6 +430,8 @@ class KnowledgeStore:
                         item.evidence,
                         item.status.value,
                         item.provider,
+                        item.resolved_node_id,
+                        item.resolution_reason,
                     )
                     for item in proposals
                 ],
@@ -360,6 +469,49 @@ class KnowledgeStore:
                 evidence=row["evidence"],
                 status=TaxonomyProposalStatus(row["status"]),
                 provider=row["provider"],
+                resolved_node_id=row["resolved_node_id"],
+                resolution_reason=row["resolution_reason"],
             )
             for row in rows
         ]
+
+    def get_taxonomy_proposal(self, proposal_id: str) -> TaxonomyProposal | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM taxonomy_proposals WHERE id = ?",
+                (proposal_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return TaxonomyProposal(
+            id=row["id"],
+            document_id=row["document_id"],
+            parent_id=row["parent_id"],
+            name=row["name"],
+            level=row["level"],
+            confidence=row["confidence"],
+            evidence=row["evidence"],
+            status=TaxonomyProposalStatus(row["status"]),
+            provider=row["provider"],
+            resolved_node_id=row["resolved_node_id"],
+            resolution_reason=row["resolution_reason"],
+        )
+
+    def resolve_taxonomy_proposal(
+        self,
+        proposal_id: str,
+        status: TaxonomyProposalStatus,
+        resolved_node_id: str | None,
+        reason: str,
+    ) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE taxonomy_proposals
+                SET status = ?, resolved_node_id = ?, resolution_reason = ?
+                WHERE id = ?
+                """,
+                (status.value, resolved_node_id, reason, proposal_id),
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(proposal_id)
