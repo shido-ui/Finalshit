@@ -5,7 +5,14 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import DocumentRecord, ProcessingJob, ProcessingStatus, Provenance, QuestionCandidate
+from .models import (
+    ClassificationStatus,
+    DocumentRecord,
+    ProcessingJob,
+    ProcessingStatus,
+    Provenance,
+    QuestionCandidate,
+)
 
 
 class KnowledgeStore:
@@ -41,7 +48,9 @@ class KnowledgeStore:
                     text TEXT NOT NULL,
                     number TEXT,
                     taxonomy_node_id TEXT,
+                    classification_status TEXT NOT NULL DEFAULT 'unclassified',
                     classification_confidence REAL NOT NULL DEFAULT 0.0,
+                    classification_reason TEXT,
                     provenance_json TEXT NOT NULL,
                     FOREIGN KEY(document_id) REFERENCES documents(id)
                 );
@@ -52,12 +61,34 @@ class KnowledgeStore:
                     ON questions(taxonomy_node_id);
                 CREATE INDEX IF NOT EXISTS idx_questions_page_start
                     ON questions(page_start);
+                CREATE INDEX IF NOT EXISTS idx_questions_classification
+                    ON questions(classification_status);
                 """
             )
+            self._migrate_questions(connection)
+
+    @staticmethod
+    def _migrate_questions(connection: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(questions)").fetchall()
+        }
+        migrations = {
+            "classification_status": (
+                "TEXT NOT NULL DEFAULT 'unclassified'",
+            ),
+            "classification_reason": ("TEXT",),
+        }
+        for name, (definition,) in migrations.items():
+            if name not in columns:
+                connection.execute(
+                    f"ALTER TABLE questions ADD COLUMN {name} {definition}"
+                )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
     def save_document(self, document: DocumentRecord) -> None:
@@ -157,9 +188,10 @@ class KnowledgeStore:
                 """
                 INSERT INTO questions (
                     id, document_id, page_start, page_end, text, number,
-                    taxonomy_node_id, classification_confidence, provenance_json
+                    taxonomy_node_id, classification_status, classification_confidence,
+                    classification_reason, provenance_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -170,7 +202,9 @@ class KnowledgeStore:
                         question.text,
                         question.number,
                         question.taxonomy_node_id,
+                        question.classification_status.value,
                         question.classification_confidence,
+                        question.classification_reason,
                         json.dumps(
                             [item.model_dump(mode="json") for item in question.provenance],
                             separators=(",", ":"),
@@ -185,6 +219,7 @@ class KnowledgeStore:
         document_id: str,
         taxonomy_node_id: str | None = None,
         page: int | None = None,
+        classification_status: ClassificationStatus | None = None,
     ) -> list[QuestionCandidate]:
         clauses = ["document_id = ?"]
         params: list[object] = [document_id]
@@ -195,6 +230,9 @@ class KnowledgeStore:
         if page is not None:
             clauses.append("page_start <= ? AND page_end >= ?")
             params.extend([page, page])
+        if classification_status is not None:
+            clauses.append("classification_status = ?")
+            params.append(classification_status.value)
 
         query = f"""
             SELECT * FROM questions
@@ -213,8 +251,13 @@ class KnowledgeStore:
                 text=row["text"],
                 number=row["number"],
                 taxonomy_node_id=row["taxonomy_node_id"],
+                classification_status=ClassificationStatus(row["classification_status"]),
                 classification_confidence=row["classification_confidence"],
-                provenance=[Provenance.model_validate(item) for item in json.loads(row["provenance_json"])],
+                classification_reason=row["classification_reason"],
+                provenance=[
+                    Provenance.model_validate(item)
+                    for item in json.loads(row["provenance_json"])
+                ],
             )
             for row in rows
         ]
