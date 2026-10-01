@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pymupdf
 
+from .classifier import DEFAULT_CLASSIFIER, QuestionClassifier
 from .extractor import extract_document, reconstruct_question_candidates
 from .models import (
+    ClassificationStatus,
     DocumentRecord,
     ProcessingJob,
     ProcessingStatus,
@@ -15,13 +17,22 @@ from .models import (
     QuestionCandidate,
 )
 from .store import KnowledgeStore
+from .taxonomy import DEFAULT_TAXONOMY, Taxonomy
 
 
 class KnowledgeService:
-    def __init__(self, store: KnowledgeStore, storage_dir: str | Path) -> None:
+    def __init__(
+        self,
+        store: KnowledgeStore,
+        storage_dir: str | Path,
+        taxonomy: Taxonomy = DEFAULT_TAXONOMY,
+        classifier: QuestionClassifier = DEFAULT_CLASSIFIER,
+    ) -> None:
         self.store = store
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self.taxonomy = taxonomy
+        self.classifier = classifier
 
     def ingest_pdf(self, filename: str, content: bytes) -> DocumentRecord:
         if not content:
@@ -67,8 +78,10 @@ class KnowledgeService:
         self, document: DocumentRecord, pages
     ) -> list[QuestionCandidate]:
         extracted = reconstruct_question_candidates(pages)
-        return [
-            QuestionCandidate(
+        questions: list[QuestionCandidate] = []
+
+        for index, item in enumerate(extracted):
+            question = QuestionCandidate(
                 id=f"{document.id}-{index + 1}",
                 document_id=document.id,
                 page_start=item.page_start,
@@ -85,8 +98,22 @@ class KnowledgeService:
                     for page in range(item.page_start, item.page_end + 1)
                 ],
             )
-            for index, item in enumerate(extracted)
-        ]
+            result = self.classifier.classify(question, self.taxonomy)
+            questions.append(
+                question.model_copy(
+                    update={
+                        "taxonomy_node_id": result.taxonomy_node_id,
+                        "classification_status": (
+                            ClassificationStatus.QUARANTINED
+                            if result.quarantined
+                            else ClassificationStatus.CLASSIFIED
+                        ),
+                        "classification_confidence": result.confidence,
+                        "classification_reason": result.reason,
+                    }
+                )
+            )
+        return questions
 
     def process_document(self, job_id: str) -> DocumentRecord:
         job = self.store.get_job(job_id)
@@ -172,6 +199,7 @@ class KnowledgeService:
         document_id: str,
         taxonomy_node_id: str | None = None,
         page: int | None = None,
+        classification_status: ClassificationStatus | None = None,
     ) -> list[QuestionCandidate]:
         document = self.store.get_document(document_id)
         if document is None:
@@ -193,4 +221,5 @@ class KnowledgeService:
             document_id,
             taxonomy_node_id=taxonomy_node_id,
             page=page,
+            classification_status=classification_status,
         )
