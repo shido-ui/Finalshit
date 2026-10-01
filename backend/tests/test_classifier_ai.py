@@ -1,9 +1,7 @@
 import json
-from types import SimpleNamespace
-
 import pytest
 
-from app.knowledge.classifier import ClassificationResult, KeywordTaxonomyClassifier
+from app.knowledge.classifier import KeywordTaxonomyClassifier
 from app.knowledge.classifier_ai import (
     GeminiQuestionClassificationProvider,
     HybridQuestionClassifier,
@@ -159,31 +157,37 @@ def test_ai_null_classification_is_quarantined_when_fallback_is_weak():
 def test_gemini_provider_parses_structured_response(monkeypatch):
     captured = {}
 
-    response = SimpleNamespace(
-        __enter__=lambda self: self,
-        __exit__=lambda self, exc_type, exc, tb: False,
-        read=lambda self: json.dumps(
-            {
-                "candidates": [
-                    {
-                        "content": {
-                            "parts": [
-                                {
-                                    "text": json.dumps(
-                                        {
-                                            "taxonomy_node_id": "physics.c05.t02.s01",
-                                            "confidence": 0.91,
-                                            "evidence": "Angular momentum is explicitly conserved.",
-                                        }
-                                    )
-                                }
-                            ]
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "parts": [
+                                    {
+                                        "text": json.dumps(
+                                            {
+                                                "taxonomy_node_id": "physics.c05.t02.s01",
+                                                "confidence": 0.91,
+                                                "evidence": "Angular momentum is explicitly conserved.",
+                                            }
+                                        )
+                                    }
+                                ]
+                            }
                         }
-                    }
-                ]
-            }
-        ).encode(),
-    )
+                    ]
+                }
+            ).encode()
+
+    response = FakeResponse()
 
     def fake_urlopen(request, timeout):
         captured["request"] = request
