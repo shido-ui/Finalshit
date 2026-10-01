@@ -378,6 +378,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
 
     private fun displayName(uri: Uri): String {
         val fallback = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
