@@ -4,7 +4,10 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
 from fastapi.responses import FileResponse
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+
+load_dotenv()
 
 from app.knowledge.models import (
     ClassificationStatus,
