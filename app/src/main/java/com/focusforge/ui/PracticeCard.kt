@@ -202,6 +202,7 @@ private fun QuestionCard(
     onAnswer: (String) -> Unit,
     repository: BackendRepository
 ) {
+    val detailScope = rememberCoroutineScope()
     var solution by remember(question.id) { mutableStateOf<com.focusforge.api.QuestionSolution?>(null) }
     var assetBytes by remember(question.id) { mutableStateOf<ByteArray?>(null) }
     var detailBusy by remember(question.id) { mutableStateOf(false) }
@@ -223,7 +224,7 @@ private fun QuestionCard(
                     enabled = !detailBusy,
                     onClick = {
                         detailBusy = true
-                        kotlinx.coroutines.MainScope().launch {
+                        detailScope.launch {
                             runCatching {
                                 repository.getQuestionAssets(question.id).firstOrNull()?.let { asset ->
                                     assetBytes = repository.getAssetBytes(asset.id)
