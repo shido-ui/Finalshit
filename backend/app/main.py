@@ -12,6 +12,7 @@ from app.knowledge.models import (
     TaxonomyProposal,
     TaxonomyProposalResolution,
 )
+from app.knowledge.classifier_ai import default_question_classifier
 from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
@@ -23,6 +24,7 @@ knowledge_service = KnowledgeService(
     store=KnowledgeStore(_data_dir / "knowledge.db"),
     storage_dir=_data_dir / "documents",
     taxonomy_proposal_provider=GeminiTaxonomyProposalProvider(),
+    classifier=default_question_classifier(),
 )
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
@@ -59,6 +61,9 @@ def bootstrap() -> dict[str, object]:
             "taxonomy-registry",
             "taxonomy-proposal-resolution",
             "dynamic-taxonomy-classification",
+            "ai-question-classification",
+            "ai-classification-confidence",
+            "ai-classification-fallback",
             "provenance",
         ],
     }
