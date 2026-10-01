@@ -114,6 +114,29 @@ class Solution(BaseModel):
     provenance: list[Provenance] = Field(default_factory=list)
 
 
+
+class PracticeSession(BaseModel):
+    id: str
+    mode: str
+    question_ids: list[str] = Field(default_factory=list)
+    started_at: str
+    submitted_at: str | None = None
+    score: int | None = None
+    total: int = Field(ge=0)
+    answered: int = Field(default=0, ge=0)
+
+
+class LibraryItem(BaseModel):
+    id: str
+    document_id: str
+    title: str
+    pinned: bool = False
+    archived: bool = False
+    fast_mode_enabled: bool = True
+    created_at: str
+    updated_at: str
+
+
 class DocumentRecord(BaseModel):
     id: str
     filename: str

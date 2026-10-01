@@ -21,6 +21,8 @@ from .models import (
     QuestionCandidate,
     Solution,
     SolutionStatus,
+    PracticeSession,
+    LibraryItem,
 )
 
 
@@ -186,6 +188,37 @@ class KnowledgeStore:
                     ON solutions(question_id);
                 CREATE INDEX IF NOT EXISTS idx_solutions_document
                     ON solutions(document_id);
+
+                CREATE TABLE IF NOT EXISTS practice_sessions (
+                    id TEXT PRIMARY KEY,
+                    mode TEXT NOT NULL,
+                    question_ids_json TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    submitted_at TEXT,
+                    score INTEGER,
+                    total INTEGER NOT NULL,
+                    answered INTEGER NOT NULL DEFAULT 0
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_practice_sessions_started
+                    ON practice_sessions(started_at);
+
+                CREATE TABLE IF NOT EXISTS library_items (
+                    id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL UNIQUE,
+                    title TEXT NOT NULL,
+                    pinned INTEGER NOT NULL DEFAULT 0,
+                    archived INTEGER NOT NULL DEFAULT 0,
+                    fast_mode_enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_library_pinned
+                    ON library_items(pinned, updated_at);
+
+
 
                 CREATE INDEX IF NOT EXISTS idx_questions_taxonomy
                     ON questions(taxonomy_node_id);
@@ -622,6 +655,109 @@ class KnowledgeStore:
             for row in rows
         ]
 
+
+
+
+    def save_library_item(self, item: LibraryItem) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO library_items
+                    (id, document_id, title, pinned, archived, fast_mode_enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    document_id=excluded.document_id,
+                    title=excluded.title,
+                    pinned=excluded.pinned,
+                    archived=excluded.archived,
+                    fast_mode_enabled=excluded.fast_mode_enabled,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    item.id, item.document_id, item.title, int(item.pinned),
+                    int(item.archived), int(item.fast_mode_enabled),
+                    item.created_at, item.updated_at,
+                ),
+            )
+
+    def get_library_item(self, document_id: str) -> LibraryItem | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM library_items WHERE document_id = ?",
+                (document_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return LibraryItem(
+            id=row["id"], document_id=row["document_id"], title=row["title"],
+            pinned=bool(row["pinned"]), archived=bool(row["archived"]),
+            fast_mode_enabled=bool(row["fast_mode_enabled"]),
+            created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+
+    def get_library_items(self, include_archived: bool = False) -> list[LibraryItem]:
+        query = "SELECT * FROM library_items"
+        if not include_archived:
+            query += " WHERE archived = 0"
+        query += " ORDER BY pinned DESC, updated_at DESC"
+        with self._connect() as connection:
+            rows = connection.execute(query).fetchall()
+        return [
+            LibraryItem(
+                id=row["id"], document_id=row["document_id"], title=row["title"],
+                pinned=bool(row["pinned"]), archived=bool(row["archived"]),
+                fast_mode_enabled=bool(row["fast_mode_enabled"]),
+                created_at=row["created_at"], updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+
+    def save_practice_session(self, session: PracticeSession) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO practice_sessions
+                    (id, mode, question_ids_json, started_at, submitted_at, score, total, answered)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    mode=excluded.mode,
+                    question_ids_json=excluded.question_ids_json,
+                    started_at=excluded.started_at,
+                    submitted_at=excluded.submitted_at,
+                    score=excluded.score,
+                    total=excluded.total,
+                    answered=excluded.answered
+                """,
+                (
+                    session.id,
+                    session.mode,
+                    json.dumps(session.question_ids, separators=(",", ":")),
+                    session.started_at,
+                    session.submitted_at,
+                    session.score,
+                    session.total,
+                    session.answered,
+                ),
+            )
+
+    def get_practice_session(self, session_id: str) -> PracticeSession | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM practice_sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return PracticeSession(
+            id=row["id"],
+            mode=row["mode"],
+            question_ids=json.loads(row["question_ids_json"]),
+            started_at=row["started_at"],
+            submitted_at=row["submitted_at"],
+            score=row["score"],
+            total=row["total"],
+            answered=row["answered"],
+        )
 
     def save_solution(self, solution: Solution) -> None:
         with self._connect() as connection:

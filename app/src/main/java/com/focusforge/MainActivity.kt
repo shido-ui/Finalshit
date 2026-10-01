@@ -24,11 +24,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.focusforge.enforcement.FocusEnforcementController
+import com.focusforge.data.LibraryItem
+import kotlinx.coroutines.launch
 import com.focusforge.focus.FocusState
 import com.focusforge.launcher.AppCatalog
 import com.focusforge.launcher.LaunchableApp
@@ -42,6 +45,7 @@ class MainActivity : ComponentActivity() {
         val manager = (application as FocusForgeApplication).sessionManager
         val catalog = AppCatalog(this)
         val enforcement = FocusEnforcementController(this)
+        val libraryRepository = (application as FocusForgeApplication).libraryRepository
 
         setContent {
             MaterialTheme {
@@ -57,6 +61,8 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf(setOf(packageName))
                 }
                 val enforcementStatus = remember { enforcement.status() }
+                val libraryItems by libraryRepository.observeActive().collectAsState(initial = emptyList())
+                val scope = rememberCoroutineScope()
 
                 Surface(Modifier.fillMaxSize()) {
                     Column(
@@ -157,6 +163,50 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(
+                                Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("Library", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "Local study material stays available on-device.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                if (libraryItems.isEmpty()) {
+                                    Text(
+                                        "No documents in the local library yet.",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                } else {
+                                    libraryItems.take(8).forEach { item ->
+                                        LibraryRow(
+                                            item = item,
+                                            onPinned = {
+                                                scope.launch {
+                                                    libraryRepository.setPinned(item.documentId, !item.pinned)
+                                                }
+                                            },
+                                            onFastMode = {
+                                                scope.launch {
+                                                    libraryRepository.setFastMode(
+                                                        item.documentId,
+                                                        !item.fastModeEnabled
+                                                    )
+                                                }
+                                            },
+                                            onArchive = {
+                                                scope.launch {
+                                                    libraryRepository.setArchived(item.documentId, true)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Usage access", style = MaterialTheme.typography.titleMedium)
@@ -201,3 +251,37 @@ private fun AppRow(
         Checkbox(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
+
+
+@androidx.compose.runtime.Composable
+private fun LibraryRow(
+    item: LibraryItem,
+    onPinned: () -> Unit,
+    onFastMode: () -> Unit,
+    onArchive: () -> Unit
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(item.title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (item.fastModeEnabled) "Fast Mode enabled" else "Fast Mode disabled",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = onPinned) {
+                    Text(if (item.pinned) "Unpin" else "Pin")
+                }
+                OutlinedButton(onClick = onFastMode) {
+                    Text(if (item.fastModeEnabled) "Disable Fast" else "Enable Fast")
+                }
+                OutlinedButton(onClick = onArchive) {
+                    Text("Archive")
+                }
+            }
+        }
+    }
+}
+

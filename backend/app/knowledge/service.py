@@ -29,6 +29,7 @@ from .models import (
     TaxonomyProposalResolution,
     TaxonomyProposalStatus,
     Solution,
+    LibraryItem,
 )
 from .store import KnowledgeStore
 from .taxonomy import DEFAULT_TAXONOMY, Taxonomy
@@ -317,6 +318,20 @@ class KnowledgeService:
                 }
             )
             self.store.save_document(ready)
+            now = self.store.now()
+            existing_library = self.store.get_library_item(record.id)
+            self.store.save_library_item(
+                LibraryItem(
+                    id=existing_library.id if existing_library else f"library-{record.id}",
+                    document_id=record.id,
+                    title=existing_library.title if existing_library else record.filename,
+                    pinned=existing_library.pinned if existing_library else False,
+                    archived=False,
+                    fast_mode_enabled=existing_library.fast_mode_enabled if existing_library else True,
+                    created_at=existing_library.created_at if existing_library else now,
+                    updated_at=now,
+                )
+            )
             self.store.save_job(
                 running_job.model_copy(
                     update={"status": ProcessingStatus.READY, "updated_at": self.store.now()}
