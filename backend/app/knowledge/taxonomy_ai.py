@@ -47,29 +47,35 @@ class TaxonomyProposalEngine:
     ) -> list[TaxonomyProposal]:
         candidates = self.provider.propose(document_text, self.taxonomy)
         proposals: list[TaxonomyProposal] = []
-        seen: set[str] = set()
-
+        candidate_ids = {candidate.id for candidate in candidates}
+        accepted_ids: set[str] = set()
         valid_levels = Taxonomy.VALID_LEVELS
-        for candidate in candidates:
-            proposal_id = f"{document_id}-{candidate.id}"
-            if proposal_id in seen:
-                continue
-            seen.add(proposal_id)
 
-            if candidate.level not in valid_levels:
-                continue
-            if candidate.parent_id is not None and not (
-                candidate.parent_id in self.taxonomy._nodes
-                or candidate.parent_id.startswith("new:")
-            ):
-                continue
+        # Resolve parent references in repeated passes so a child can safely
+        # appear before its proposed parent in the model response.
+        remaining = list(candidates)
+        while remaining:
+            progress = False
+            next_remaining: list[TaxonomyProposalCandidate] = []
 
-            if candidate.parent_id is not None and candidate.parent_id.startswith("new:"):
-                parent_candidate_id = candidate.parent_id.removeprefix("new:")
-                if f"{document_id}-{parent_candidate_id}" not in seen:
+            for candidate in remaining:
+                proposal_id = f"{document_id}-{candidate.id}"
+                if candidate.level not in valid_levels or proposal_id in accepted_ids:
                     continue
 
-            proposals.append(
+                parent_id = candidate.parent_id
+                if parent_id is not None:
+                    if parent_id.startswith("new:"):
+                        parent_candidate_id = parent_id.removeprefix("new:")
+                        if parent_candidate_id not in candidate_ids:
+                            continue
+                        if f"{document_id}-{parent_candidate_id}" not in accepted_ids:
+                            next_remaining.append(candidate)
+                            continue
+                    elif self.taxonomy.get(parent_id) is None:
+                        continue
+
+                proposals.append(
                 TaxonomyProposal(
                     id=proposal_id,
                     document_id=document_id,
@@ -80,7 +86,12 @@ class TaxonomyProposalEngine:
                     evidence=candidate.evidence.strip(),
                     provider=self.provider.name,
                 )
-            )
+                accepted_ids.add(proposal_id)
+                progress = True
+
+            if not progress:
+                break
+            remaining = next_remaining
 
         return proposals
 
