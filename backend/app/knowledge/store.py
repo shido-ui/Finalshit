@@ -294,7 +294,7 @@ class KnowledgeStore:
                     taxonomy_node_id, classification_status, classification_confidence,
                     classification_reason, provenance_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
