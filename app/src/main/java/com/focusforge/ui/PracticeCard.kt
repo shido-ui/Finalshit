@@ -251,7 +251,7 @@ private fun QuestionCard(
                 enabled = !detailBusy,
                 onClick = {
                     detailBusy = true
-                    kotlinx.coroutines.MainScope().launch {
+                    detailScope.launch {
                         runCatching {
                             solution = repository.getQuestionSolution(question.id)
                         }.recoverCatching {
