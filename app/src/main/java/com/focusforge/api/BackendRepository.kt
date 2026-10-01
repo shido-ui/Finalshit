@@ -21,4 +21,16 @@ class BackendRepository(context: Context) {
     ): BackendLibraryItem = api.updateLibrary(
         documentId, pinned, archived, fastModeEnabled
     )
+
+    suspend fun startPractice(
+        mode: String = "fast",
+        limit: Int = 10,
+        documentId: String? = null,
+        taxonomyNodeId: String? = null
+    ): PracticeStart = api.startPractice(mode, limit, documentId, taxonomyNodeId)
+
+    suspend fun submitPractice(
+        sessionId: String,
+        answers: Map<String, String>
+    ): PracticeResult = api.submitPractice(sessionId, answers)
 }
