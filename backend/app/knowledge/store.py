@@ -533,7 +533,7 @@ class KnowledgeStore:
                 INSERT INTO document_assets (
                     id, document_id, page_number, asset_index, kind, mime_type,
                     sha256, byte_size, width, height, x0, y0, x1, y1, xref, source_hash, storage_path
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
