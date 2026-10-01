@@ -1,6 +1,7 @@
 import pytest
 
 from app.knowledge.models import (
+    ClassificationStatus,
     DocumentRecord,
     ProcessingStatus,
     QuestionCandidate,
@@ -52,7 +53,7 @@ def test_store_seeds_default_taxonomy_and_persists_ai_nodes(tmp_path):
 
     ai_node = proposal(
         "doc-1",
-        "doc-1-new-rolling",
+        "doc-1-new:rolling",
         parent_id="physics.c05",
         name="Rolling Motion",
     )
