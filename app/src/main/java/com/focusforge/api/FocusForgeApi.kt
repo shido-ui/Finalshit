@@ -139,6 +139,50 @@ class FocusForgeApi(
         )
     }
 
+    suspend fun getWeaknesses(limit: Int = 20): List<WeaknessProfile> = withContext(Dispatchers.IO) {
+        require(limit in 1..500) { "Weakness limit must be between 1 and 500" }
+        val array = JSONArray(request("GET", "/api/v1/intelligence/weaknesses?limit=$limit"))
+        buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                add(parseWeakness(array.getJSONObject(index)))
+            }
+        }
+    }
+
+    suspend fun getDueReviewQuestionIds(limit: Int = 100): List<String> = withContext(Dispatchers.IO) {
+        require(limit in 1..500) { "Review limit must be between 1 and 500" }
+        val array = JSONArray(request("GET", "/api/v1/intelligence/reviews/due?limit=$limit"))
+        buildList(array.length()) {
+            for (index in 0 until array.length()) add(array.getString(index))
+        }
+    }
+
+    suspend fun getReviewState(questionId: String): ReviewState = withContext(Dispatchers.IO) {
+        parseReviewState(
+            JSONObject(request("GET", "/api/v1/intelligence/reviews/${encode(questionId)}"))
+        )
+    }
+
+    private fun parseWeakness(json: JSONObject) = WeaknessProfile(
+        taxonomyNodeId = json.getString("taxonomy_node_id"),
+        attempts = json.getInt("attempts"),
+        correct = json.getInt("correct"),
+        incorrect = json.getInt("incorrect"),
+        accuracy = json.getDouble("accuracy"),
+        mastery = json.getDouble("mastery"),
+        lastAttemptAt = json.optString("last_attempt_at").takeIf { it.isNotBlank() && it != "null" }
+    )
+
+    private fun parseReviewState(json: JSONObject) = ReviewState(
+        questionId = json.getString("question_id"),
+        repetitions = json.getInt("repetitions"),
+        intervalDays = json.getInt("interval_days"),
+        easeFactor = json.getDouble("ease_factor"),
+        dueAt = json.getString("due_at"),
+        lastReviewedAt = json.optString("last_reviewed_at").takeIf { it.isNotBlank() && it != "null" },
+        lastCorrect = if (json.isNull("last_correct")) null else json.getBoolean("last_correct")
+    )
+
     private fun parseLibraryItem(item: JSONObject) = BackendLibraryItem(
         documentId = item.getString("document_id"),
         title = item.getString("title"),

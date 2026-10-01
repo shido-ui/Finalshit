@@ -17,6 +17,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -36,6 +37,7 @@ import kotlinx.coroutines.launch
 fun PracticeCard(
     repository: BackendRepository,
     libraryItems: List<LibraryItem>,
+    adaptiveLaunchToken: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -48,6 +50,14 @@ fun PracticeCard(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val answers = remember { mutableStateMapOf<String, String>() }
+
+    LaunchedEffect(adaptiveLaunchToken) {
+        if (adaptiveLaunchToken > 0 && sessionId == null) {
+            mode = "adaptive"
+            result = null
+            error = null
+        }
+    }
 
     Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -33,4 +33,14 @@ class BackendRepository(context: Context) {
         sessionId: String,
         answers: Map<String, String>
     ): PracticeResult = api.submitPractice(sessionId, answers)
+    
+    suspend fun getWeaknesses(limit: Int = 20): List<WeaknessProfile> =
+        api.getWeaknesses(limit)
+
+    suspend fun getDueReviewQuestionIds(limit: Int = 100): List<String> =
+        api.getDueReviewQuestionIds(limit)
+
+    suspend fun getReviewState(questionId: String): ReviewState =
+        api.getReviewState(questionId)
 }
+
