@@ -22,6 +22,7 @@ from .models import (
     Solution,
     SolutionStatus,
     PracticeSession,
+    LibraryItem,
 )
 
 
@@ -201,6 +202,22 @@ class KnowledgeStore:
 
                 CREATE INDEX IF NOT EXISTS idx_practice_sessions_started
                     ON practice_sessions(started_at);
+
+                CREATE TABLE IF NOT EXISTS library_items (
+                    id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL UNIQUE,
+                    title TEXT NOT NULL,
+                    pinned INTEGER NOT NULL DEFAULT 0,
+                    archived INTEGER NOT NULL DEFAULT 0,
+                    fast_mode_enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(document_id) REFERENCES documents(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_library_pinned
+                    ON library_items(pinned, updated_at);
+
 
 
                 CREATE INDEX IF NOT EXISTS idx_questions_taxonomy
@@ -639,6 +656,61 @@ class KnowledgeStore:
         ]
 
 
+
+
+    def save_library_item(self, item: LibraryItem) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO library_items
+                    (id, document_id, title, pinned, archived, fast_mode_enabled, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    document_id=excluded.document_id,
+                    title=excluded.title,
+                    pinned=excluded.pinned,
+                    archived=excluded.archived,
+                    fast_mode_enabled=excluded.fast_mode_enabled,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    item.id, item.document_id, item.title, int(item.pinned),
+                    int(item.archived), int(item.fast_mode_enabled),
+                    item.created_at, item.updated_at,
+                ),
+            )
+
+    def get_library_item(self, document_id: str) -> LibraryItem | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM library_items WHERE document_id = ?",
+                (document_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return LibraryItem(
+            id=row["id"], document_id=row["document_id"], title=row["title"],
+            pinned=bool(row["pinned"]), archived=bool(row["archived"]),
+            fast_mode_enabled=bool(row["fast_mode_enabled"]),
+            created_at=row["created_at"], updated_at=row["updated_at"],
+        )
+
+    def get_library_items(self, include_archived: bool = False) -> list[LibraryItem]:
+        query = "SELECT * FROM library_items"
+        if not include_archived:
+            query += " WHERE archived = 0"
+        query += " ORDER BY pinned DESC, updated_at DESC"
+        with self._connect() as connection:
+            rows = connection.execute(query).fetchall()
+        return [
+            LibraryItem(
+                id=row["id"], document_id=row["document_id"], title=row["title"],
+                pinned=bool(row["pinned"]), archived=bool(row["archived"]),
+                fast_mode_enabled=bool(row["fast_mode_enabled"]),
+                created_at=row["created_at"], updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
 
     def save_practice_session(self, session: PracticeSession) -> None:
         with self._connect() as connection:
