@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import DocumentRecord, ProcessingStatus
+from .models import DocumentRecord, ProcessingJob, ProcessingStatus
 
 
 class KnowledgeStore:
@@ -80,3 +81,54 @@ class KnowledgeStore:
             error=row["error"],
             question_count=row["question_count"],
         )
+
+    def save_job(self, job: ProcessingJob) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO processing_jobs (id, document_id, status, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    status=excluded.status,
+                    updated_at=excluded.updated_at
+                """,
+                (job.id, job.document_id, job.status.value, job.updated_at),
+            )
+
+    def get_job(self, job_id: str) -> ProcessingJob | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM processing_jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return ProcessingJob(
+            id=row["id"],
+            document_id=row["document_id"],
+            status=ProcessingStatus(row["status"]),
+            updated_at=row["updated_at"],
+        )
+
+    def pending_jobs(self) -> list[ProcessingJob]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM processing_jobs
+                WHERE status IN (?, ?)
+                ORDER BY updated_at
+                """,
+                (ProcessingStatus.QUEUED.value, ProcessingStatus.EXTRACTING.value),
+            ).fetchall()
+        return [
+            ProcessingJob(
+                id=row["id"],
+                document_id=row["document_id"],
+                status=ProcessingStatus(row["status"]),
+                updated_at=row["updated_at"],
+            )
+            for row in rows
+        ]
+
+    @staticmethod
+    def now() -> str:
+        return datetime.now(timezone.utc).isoformat()
