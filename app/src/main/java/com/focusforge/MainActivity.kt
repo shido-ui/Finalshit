@@ -45,6 +45,7 @@ import com.focusforge.focus.FocusState
 import com.focusforge.launcher.AppCatalog
 import com.focusforge.launcher.LaunchableApp
 import com.focusforge.ui.FocusForgeViewModel
+import com.focusforge.ui.PracticeCard
 import com.focusforge.usage.UsageAccess
 import com.focusforge.usage.openUsageAccessSettings
 import kotlinx.coroutines.launch
@@ -298,6 +299,11 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+
+                        PracticeCard(
+                            repository = backendRepository,
+                            libraryItems = libraryItems
+                        )
 
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

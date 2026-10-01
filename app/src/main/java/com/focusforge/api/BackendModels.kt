@@ -21,3 +21,40 @@ data class BackendHealth(
     val status: String,
     val service: String
 )
+
+data class PracticeQuestion(
+    val id: String,
+    val position: Int,
+    val text: String,
+    val options: Map<String, String>,
+    val taxonomyNodeId: String?,
+    val difficulty: String?,
+    val hasDiagram: Boolean,
+    val hasTable: Boolean
+)
+
+data class PracticeSession(
+    val id: String,
+    val mode: String,
+    val questionIds: List<String>,
+    val startedAt: String,
+    val submittedAt: String?,
+    val score: Int?,
+    val total: Int,
+    val answered: Int
+)
+
+data class PracticeStart(
+    val session: PracticeSession,
+    val questions: List<PracticeQuestion>
+)
+
+data class PracticeResult(
+    val sessionId: String,
+    val score: Int,
+    val total: Int,
+    val answered: Int,
+    val correct: Int,
+    val percentage: Double,
+    val questionResults: Map<String, Boolean>
+)
