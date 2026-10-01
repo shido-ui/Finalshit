@@ -25,6 +25,7 @@ from app.knowledge.models import (
 from app.knowledge.classifier_ai import default_question_classifier
 from app.knowledge.question_intelligence import default_question_intelligence
 from app.knowledge.solution_engine import SolutionEngine, default_solution_provider
+from app.knowledge.copilot import StudyCopilot, default_copilot_provider, CopilotCandidate
 from app.knowledge.practice import PracticeResult, PracticeQuestion, PracticeService
 from app.knowledge.intelligence import IntelligenceService
 from app.knowledge.service import KnowledgeService
@@ -48,6 +49,7 @@ knowledge_service = KnowledgeService(
 )
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
+study_copilot = StudyCopilot(default_copilot_provider())
 
 
 class HealthResponse(BaseModel):
@@ -102,6 +104,39 @@ class PracticeStartResponse(BaseModel):
 
 class PracticeSubmitRequest(BaseModel):
     answers: dict[str, str] = Field(default_factory=dict)
+
+
+class CopilotRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=12000)
+    page_start: int = Field(default=1, ge=1)
+    page_end: int = Field(default=1, ge=1)
+
+
+@app.post(
+    "/api/v1/knowledge/documents/{document_id}/copilot",
+    response_model=CopilotCandidate,
+)
+def ask_copilot(document_id: str, request: CopilotRequest) -> CopilotCandidate:
+    try:
+        return knowledge_service.answer_copilot(
+            document_id,
+            request.question,
+            request.page_start,
+            request.page_end,
+            study_copilot,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Document not found") from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=409, detail="Document source is missing") from exc
+    except ValueError as exc:
+        if str(exc) == "GEMINI_API_KEY is not configured":
+            raise HTTPException(status_code=503, detail="Study Copilot is not configured") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        if str(exc) == "GEMINI_API_KEY is not configured":
+            raise HTTPException(status_code=503, detail="Study Copilot is not configured") from exc
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/library", response_model=list[LibraryItem])
@@ -291,6 +326,9 @@ def bootstrap() -> dict[str, object]:
             "adaptive-practice",
             "spaced-repetition",
             "knowledge-graph-foundation",
+            "grounded-study-copilot",
+            "copilot-source-citations",
+            "device-owner-lock-task-hard-mode",
         ],
     }
 
