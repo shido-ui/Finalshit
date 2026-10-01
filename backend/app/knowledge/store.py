@@ -283,10 +283,6 @@ class KnowledgeStore:
 
                 CREATE INDEX IF NOT EXISTS idx_questions_taxonomy
                     ON questions(taxonomy_node_id);
-                CREATE INDEX IF NOT EXISTS idx_questions_taxonomy_status_page
-                    ON questions(taxonomy_node_id, classification_status, page_start);
-                CREATE INDEX IF NOT EXISTS idx_questions_document_status_page
-                    ON questions(document_id, classification_status, page_start);
                 CREATE INDEX IF NOT EXISTS idx_questions_page_start
                     ON questions(page_start);
                 """
@@ -298,6 +294,14 @@ class KnowledgeStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_questions_classification "
                 "ON questions(classification_status)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_questions_taxonomy_status_page "
+                "ON questions(taxonomy_node_id, classification_status, page_start)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_questions_document_status_page "
+                "ON questions(document_id, classification_status, page_start)"
             )
 
     @staticmethod
