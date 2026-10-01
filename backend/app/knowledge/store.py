@@ -317,9 +317,9 @@ class KnowledgeStore:
                     exam, exam_year, difficulty, intelligence_confidence,
                     intelligence_reason, intelligence_provider,
                     taxonomy_node_id, classification_status, classification_confidence,
-                    classification_reason, provenance_json
+                    classification_reason, provenance_json, asset_ids_json
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
