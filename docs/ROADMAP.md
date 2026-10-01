@@ -7,7 +7,7 @@
 5. Library + Practice — **implemented**. Room-backed local Library with pin/archive/Fast Mode controls, backend library persistence, bounded Fast Mode/Test question-bank sessions, quarantine exclusion, deterministic selection, server-side scoring, submission lifecycle protection, and regression coverage.
 6. Intelligence — **implemented**. Deterministic mistake capture, taxonomy-scoped weakness profiles, adaptive practice ranking, question-level spaced-repetition state, and persistent validated Knowledge Graph edges with API access and regression coverage.
 7. AI + Hard Mode — **implemented**. Grounded Study Copilot with source citations and provenance validation, plus hardened device-owner focus enforcement.
-8. Hardening — performance, battery, rendering, accessibility, security, regression benchmark, crash reduction and release readiness.
+8. Hardening — **implemented**. API security headers and request IDs, SQLite concurrency hardening, targeted query indexes, regression coverage, and successful backend/Android CI validation.
 
 ## Phase rule
 
