@@ -69,20 +69,20 @@ class KeywordTaxonomyClassifier:
         # use their names as additional deterministic evidence. This makes
         # approved AI-created nodes usable by the classifier without allowing
         # the model to invent IDs or bypass the confidence gate.
-        text_tokens = set(re.findall(r"[\\w]+", text))
+        text_tokens = set(re.findall(r"[\w]+", text))
         node_matches: list[tuple[str, float]] = []
         for node in taxonomy.all():
             if node.level == "subject":
                 continue
             normalized_name = node.name.casefold()
             name_tokens = [
-                token for token in re.findall(r"[\\w]+", normalized_name)
+                token for token in re.findall(r"[\w]+", normalized_name)
                 if len(token) >= 4
             ]
             if not name_tokens:
                 continue
             matched = sum(token in text_tokens for token in name_tokens)
-            phrase = " ".join(name_tokens) in " ".join(re.findall(r"[\\w]+", text))
+            phrase = " ".join(name_tokens) in " ".join(re.findall(r"[\w]+", text))
             ratio = matched / len(name_tokens)
             if phrase or (matched >= 2 and ratio >= 0.5):
                 score = 3.0 if phrase else matched + ratio
