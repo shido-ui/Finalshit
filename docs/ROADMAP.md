@@ -10,7 +10,7 @@
 8. Hard Mode — **implemented**. Device-owner setup and strongest supported lock-task enforcement.
 9. Hardening — **implemented**. API security headers and request IDs, SQLite concurrency hardening, targeted query indexes, regression coverage, and successful backend/Android CI validation.
 10. Performance & Polish (P11) — **implemented**. Hardened release shrinking/minification, configurable backend endpoint, HTTPS-by-default network policy with local-only cleartext allowance, Android 13+ back-navigation configuration, and accessibility resource labels. CI validates debug assembly and unit tests.
-11. Beta (P12) — **next**. Controlled single-user JEE validation, benchmark fixtures, release validation checklist, crash/performance telemetry strategy, and privacy/legal readiness review without accounts or social features.
+11. Beta (P12) — **implemented**. Controlled single-user JEE validation, benchmark fixtures, release validation checklist, crash/performance telemetry strategy, privacy/data readiness documentation, and release CI gates without accounts or social features.
 12. Scale Infrastructure (P13) — **conditional**. Only needed if actual usage requires moving the backend from phone/Termux to VPS/cloud; preserve the storage/API abstraction and add deployment/backup/monitoring infrastructure then.
 
 ## Master phase mapping
