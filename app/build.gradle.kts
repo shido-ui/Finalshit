@@ -15,6 +15,7 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+        buildConfigField("String", "BACKEND_BASE_URL", "\"http://127.0.0.1:8080\"")
     }
     buildTypes {
         release {
