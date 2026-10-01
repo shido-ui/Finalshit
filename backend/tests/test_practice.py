@@ -49,6 +49,17 @@ def test_submission_scores_only_ground_truth_answers(tmp_path):
     store = KnowledgeStore(tmp_path / "knowledge.db")
     service = PracticeService(store)
     questions = [make_question("q1", "A"), make_question("q2", "B")]
+    from app.knowledge.models import DocumentRecord, ProcessingStatus
+    store.save_document(
+        DocumentRecord(
+            id="doc",
+            filename="practice.pdf",
+            sha256="hash",
+            page_count=1,
+            status=ProcessingStatus.READY,
+        )
+    )
+    store.replace_questions("doc", questions)
     session, _ = service.create_session(questions, "test", 2, seed=0)
 
     result = service.submit(session.id, {"q1": "A", "q2": "A"})
@@ -77,6 +88,18 @@ def test_session_cannot_be_submitted_twice(tmp_path):
 def test_library_items_round_trip_and_sort(tmp_path):
     from app.knowledge.models import LibraryItem
     store = KnowledgeStore(tmp_path / "knowledge.db")
+    from app.knowledge.models import DocumentRecord, ProcessingStatus
+    for document_id, filename in [("doc-a", "a.pdf"), ("doc-b", "b.pdf")]:
+        store.save_document(
+            DocumentRecord(
+                id=document_id,
+                filename=filename,
+                sha256=f"hash-{document_id}",
+                page_count=1,
+                status=ProcessingStatus.READY,
+            )
+        )
+
     store.save_library_item(
         LibraryItem(
             id="lib-a",
