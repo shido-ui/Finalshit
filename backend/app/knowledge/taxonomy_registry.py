@@ -79,6 +79,15 @@ class TaxonomyRegistry:
         if proposal.status.value != "pending":
             raise ValueError(f"Proposal {proposal.id} is already {proposal.status.value}")
 
+        if proposal.level not in Taxonomy.VALID_LEVELS:
+            raise ValueError(f"Proposal {proposal.id} has invalid level {proposal.level!r}")
+        if proposal.level == "subject" and proposal.parent_id is not None:
+            raise ValueError("Subject taxonomy nodes cannot have a parent")
+        if proposal.level != "subject" and proposal.parent_id is None:
+            raise ValueError(
+                f"Proposal {proposal.id} at level {proposal.level!r} requires a parent"
+            )
+
         parent_id = proposal.parent_id
         if parent_id is not None:
             parent = self.taxonomy.get(parent_id)
