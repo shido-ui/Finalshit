@@ -37,6 +37,37 @@ class FocusForgeApi(
             parseDocument(json)
         }
 
+    suspend fun getQuestionAssets(questionId: String): List<QuestionAsset> = withContext(Dispatchers.IO) {
+        val array = JSONArray(
+            request("GET", "/api/v1/knowledge/questions/${encode(questionId)}/assets")
+        )
+        buildList(array.length()) {
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                add(
+                    QuestionAsset(
+                        id = item.getString("id"),
+                        mimeType = item.getString("mime_type")
+                    )
+                )
+            }
+        }
+    }
+
+    suspend fun getAssetBytes(assetId: String): ByteArray = withContext(Dispatchers.IO) {
+        val connection = (URL(baseUrl.trimEnd('/') + "/api/v1/knowledge/assets/${encode(assetId)}").openConnection() as HttpURLConnection)
+        connection.requestMethod = "GET"
+        connection.connectTimeout = timeoutMs
+        connection.readTimeout = timeoutMs
+        val status = connection.responseCode
+        val bytes = if (status in 200..299) connection.inputStream.use { it.readBytes() } else {
+            val detail = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            throw IOException("Asset request failed ($status): $detail")
+        }
+        connection.disconnect()
+        bytes
+    }
+
     suspend fun getDocument(documentId: String): BackendDocument = withContext(Dispatchers.IO) {
         parseDocument(
             JSONObject(request("GET", "/api/v1/knowledge/documents/${encode(documentId)}"))
@@ -278,3 +309,8 @@ class FocusForgeApi(
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 }
+
+data class QuestionAsset(
+    val id: String,
+    val mimeType: String
+)
