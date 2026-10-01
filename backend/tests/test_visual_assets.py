@@ -1,4 +1,5 @@
 import base64
+import hashlib
 
 import pymupdf
 
@@ -34,6 +35,7 @@ def test_extract_embedded_image_with_deterministic_id(tmp_path):
 
     assert len(first) == 1
     assert len(first[0].data) > 0
+    assert first[0].sha256 == hashlib.sha256(first[0].data).hexdigest()
     assert first[0].width == 1
     assert first[0].height == 1
     assert asset_id("doc", first[0]) == asset_id("doc", second[0])
