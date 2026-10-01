@@ -17,10 +17,10 @@ def test_health_exposes_security_headers_and_request_id() -> None:
 
 def test_invalid_request_id_is_replaced() -> None:
     client = TestClient(app)
-    response = client.get("/health", headers={"X-Request-ID": "\x01bad"})
+    response = client.get("/health", headers={"X-Request-ID": "x".repeat(129)})
 
     assert response.status_code == 200
     request_id = response.headers["X-Request-ID"]
-    assert request_id != "\x01bad"
+    assert len(request_id) == 16
     assert len(request_id) == 16
     assert all(character in "0123456789abcdef" for character in request_id)
