@@ -4,7 +4,6 @@ import json
 import os
 import urllib.error
 import urllib.request
-import uuid
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -76,7 +75,7 @@ class TaxonomyProposalEngine:
                         continue
 
                 proposals.append(
-                TaxonomyProposal(
+                    TaxonomyProposal(
                     id=proposal_id,
                     document_id=document_id,
                     parent_id=candidate.parent_id,
@@ -85,7 +84,7 @@ class TaxonomyProposalEngine:
                     confidence=candidate.confidence,
                     evidence=candidate.evidence.strip(),
                     provider=self.provider.name,
-                )
+                    )
                 accepted_ids.add(proposal_id)
                 progress = True
 
