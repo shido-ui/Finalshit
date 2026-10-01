@@ -18,6 +18,10 @@ from .models import (
 )
 from .store import KnowledgeStore
 from .taxonomy import DEFAULT_TAXONOMY, Taxonomy
+from .taxonomy_ai import (
+    TaxonomyProposalEngine,
+    TaxonomyProposalProvider,
+)
 
 
 class KnowledgeService:
@@ -27,12 +31,14 @@ class KnowledgeService:
         storage_dir: str | Path,
         taxonomy: Taxonomy = DEFAULT_TAXONOMY,
         classifier: QuestionClassifier = DEFAULT_CLASSIFIER,
+        taxonomy_proposal_provider: TaxonomyProposalProvider | None = None,
     ) -> None:
         self.store = store
         self.storage_dir = Path(storage_dir)
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.taxonomy = taxonomy
         self.classifier = classifier
+        self.taxonomy_proposal_provider = taxonomy_proposal_provider
 
     def ingest_pdf(self, filename: str, content: bytes) -> DocumentRecord:
         if not content:
@@ -234,3 +240,39 @@ class KnowledgeService:
             page=page,
             classification_status=classification_status,
         )
+
+
+    def propose_taxonomy(
+        self,
+        document_id: str,
+    ) -> list:
+        document = self.store.get_document(document_id)
+        if document is None:
+            raise KeyError(document_id)
+
+        source_path = self.storage_dir / f"{document_id}.pdf"
+        if not source_path.is_file():
+            raise FileNotFoundError(document_id)
+
+        actual_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        if actual_hash != document.sha256:
+            raise ValueError("Source PDF hash does not match recorded provenance")
+
+        if self.taxonomy_proposal_provider is None:
+            raise RuntimeError("No taxonomy AI provider is configured")
+
+        pages = extract_document(str(source_path))
+        if len(pages) != document.page_count:
+            raise ValueError("Source PDF page count does not match recorded metadata")
+
+        document_text = "\n\n".join(
+            f"[Page {page.page_number}]\n{page.text}"
+            for page in pages
+            if page.text.strip()
+        )
+        proposals = TaxonomyProposalEngine(
+            provider=self.taxonomy_proposal_provider,
+            taxonomy=self.taxonomy,
+        ).build_proposals(document.id, document_text)
+        self.store.save_taxonomy_proposals(proposals)
+        return proposals
