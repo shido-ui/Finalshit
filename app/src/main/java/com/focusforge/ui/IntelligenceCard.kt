@@ -65,7 +65,7 @@ fun IntelligenceCard(
                     Text(if (loading) "Refreshing…" else "Refresh")
                 }
             }
-            Text("Reviews due: $" + "{dueCount}", style = MaterialTheme.typography.bodyLarge)
+            Text("Reviews due: " + dueCount, style = MaterialTheme.typography.bodyLarge)
             if (weaknesses.isEmpty() && !loading) {
                 Text("No weakness profile yet. Complete practice questions to build your revision profile.", style = MaterialTheme.typography.bodySmall)
             } else {
@@ -74,8 +74,8 @@ fun IntelligenceCard(
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(10.dp)) {
                                 Text(profile.taxonomyNodeId, style = MaterialTheme.typography.bodyLarge)
-                                Text("Mastery $" + "{percent(profile.mastery)}% • Accuracy $" + "{percent(profile.accuracy)}% • $" + "{profile.attempts} attempts", style = MaterialTheme.typography.bodySmall)
-                                Text("$" + "{profile.incorrect} incorrect • $" + "{profile.correct} correct", style = MaterialTheme.typography.bodySmall)
+                                Text("Mastery " + percent(profile.mastery) + "% • Accuracy " + percent(profile.accuracy) + "% • " + profile.attempts + " attempts", style = MaterialTheme.typography.bodySmall)
+                                Text(profile.incorrect.toString() + " incorrect • " + profile.correct + " correct", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
