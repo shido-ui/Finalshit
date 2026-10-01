@@ -49,6 +49,8 @@ def bootstrap() -> dict[str, object]:
             "classification-confidence",
             "classification-quarantine",
             "taxonomy",
+            "jee-2026-paper-1-taxonomy",
+            "hierarchical-taxonomy-filtering",
             "provenance",
         ],
     }
