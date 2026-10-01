@@ -13,6 +13,7 @@ from app.knowledge.models import (
     QuestionCandidate,
     Solution,
     LibraryItem,
+    PracticeSession,
     TaxonomyNode,
     TaxonomyProposal,
     TaxonomyProposalResolution,
@@ -88,7 +89,7 @@ class PracticeStartRequest(BaseModel):
 
 
 class PracticeStartResponse(BaseModel):
-    session: object
+    session: PracticeSession
     questions: list[PracticeQuestion]
 
 
