@@ -58,3 +58,24 @@ data class PracticeResult(
     val percentage: Double,
     val questionResults: Map<String, Boolean>
 )
+
+
+data class WeaknessProfile(
+    val taxonomyNodeId: String,
+    val attempts: Int,
+    val correct: Int,
+    val incorrect: Int,
+    val accuracy: Double,
+    val mastery: Double,
+    val lastAttemptAt: String?
+)
+
+data class ReviewState(
+    val questionId: String,
+    val repetitions: Int,
+    val intervalDays: Int,
+    val easeFactor: Double,
+    val dueAt: String,
+    val lastReviewedAt: String?,
+    val lastCorrect: Boolean?
+)
