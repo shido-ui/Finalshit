@@ -42,5 +42,13 @@ class BackendRepository(context: Context) {
 
     suspend fun getReviewState(questionId: String): ReviewState =
         api.getReviewState(questionId)
+    
+    suspend fun askCopilot(
+        documentId: String,
+        question: String,
+        pageStart: Int = 1,
+        pageEnd: Int = pageStart
+    ): CopilotAnswer = api.askCopilot(documentId, question, pageStart, pageEnd)
 }
+
 
