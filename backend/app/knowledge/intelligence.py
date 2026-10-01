@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from .models import MistakeRecord, QuestionCandidate, ReviewState, WeaknessProfile
@@ -128,7 +128,7 @@ class IntelligenceService:
                 "medium": 0.10,
                 "easy": 0.0,
             }.get((question.difficulty or "").casefold(), 0.05)
-            score = due_bonus + mastery_gap + difficulty_bonus
+            score = due_bonus + (2.0 * mastery_gap) + difficulty_bonus
             ranked.append((score, question.id, question))
 
         ranked.sort(key=lambda item: (-item[0], item[1]))
