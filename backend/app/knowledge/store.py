@@ -61,11 +61,13 @@ class KnowledgeStore:
                     ON questions(taxonomy_node_id);
                 CREATE INDEX IF NOT EXISTS idx_questions_page_start
                     ON questions(page_start);
-                CREATE INDEX IF NOT EXISTS idx_questions_classification
-                    ON questions(classification_status);
                 """
             )
             self._migrate_questions(connection)
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_questions_classification "
+                "ON questions(classification_status)"
+            )
 
     @staticmethod
     def _migrate_questions(connection: sqlite3.Connection) -> None:
@@ -74,12 +76,10 @@ class KnowledgeStore:
             for row in connection.execute("PRAGMA table_info(questions)").fetchall()
         }
         migrations = {
-            "classification_status": (
-                "TEXT NOT NULL DEFAULT 'unclassified'",
-            ),
-            "classification_reason": ("TEXT",),
+            "classification_status": "TEXT NOT NULL DEFAULT 'unclassified'",
+            "classification_reason": "TEXT",
         }
-        for name, (definition,) in migrations.items():
+        for name, definition in migrations.items():
             if name not in columns:
                 connection.execute(
                     f"ALTER TABLE questions ADD COLUMN {name} {definition}"
