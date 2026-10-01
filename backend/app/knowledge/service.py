@@ -196,9 +196,10 @@ class KnowledgeService:
                 ],
             )
             if self.question_intelligence is not None:
-                question = self.question_intelligence.analyze(question).model_copy(
-                    update={"answer": question.answer or question.answer}
-                )
+                keyed_answer = question.answer
+                question = self.question_intelligence.analyze(question)
+                if keyed_answer and not question.answer:
+                    question = question.model_copy(update={"answer": keyed_answer})
             result = self.classifier.classify(question, self.taxonomy)
             return question.model_copy(
                 update={
