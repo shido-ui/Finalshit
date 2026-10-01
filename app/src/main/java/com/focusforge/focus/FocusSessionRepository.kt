@@ -3,6 +3,7 @@ package com.focusforge.focus
 import com.focusforge.data.FocusSession
 import com.focusforge.data.FocusSessionDao
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 
@@ -42,6 +43,9 @@ class FocusSessionRepository(
         dao.upsert(updated)
         return updated
     }
+
+    suspend fun recoverExpiredIfExpired(nowMs: Long): FocusSession? =
+        activeSession.first()?.let { recoverExpired(it, nowMs) }
 
     suspend fun recoverExpired(session: FocusSession, nowMs: Long): FocusSession? {
         if (session.state != FocusState.LOCKED.name) return null
