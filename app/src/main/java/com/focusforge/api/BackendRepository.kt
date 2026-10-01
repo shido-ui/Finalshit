@@ -45,6 +45,8 @@ class BackendRepository(context: Context) {
         taxonomyNodeId: String? = null
     ): PracticeStart = api.startPractice(mode, limit, documentId, taxonomyNodeId)
 
+    suspend fun getPracticeSession(sessionId: String): PracticeStart = api.getPracticeSession(sessionId)
+
     suspend fun submitPractice(
         sessionId: String,
         answers: Map<String, String>
