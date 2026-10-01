@@ -119,6 +119,10 @@ class SolutionValidator:
             return SolutionValidation(False, "Solution cites a page outside supplied provenance")
         if candidate.confidence < 0.50:
             return SolutionValidation(False, "Solution confidence is below verification threshold")
+        if not candidate.evidence_pages:
+            return SolutionValidation(False, "Solution has no source evidence pages")
+        if not any(source_pages.get(page, "").strip() for page in candidate.evidence_pages):
+            return SolutionValidation(False, "Solution evidence pages contain no source text")
         if question.options and candidate.answer is not None:
             label = candidate.answer.strip().upper()
             if label not in question.options:
