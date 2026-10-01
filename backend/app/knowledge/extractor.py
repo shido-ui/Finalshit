@@ -31,6 +31,7 @@ class ExtractedAsset:
     data: bytes
     width: int
     height: int
+    bbox: tuple[float, float, float, float]
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,8 @@ def extract_document_assets(path: str) -> list[ExtractedAsset]:
                 seen_xrefs.add(xref)
                 try:
                     extracted = document.extract_image(xref)
+                    rects = page.get_image_rects(xref)
+                    bbox = tuple(float(v) for v in (rects[0] if rects else (0, 0, 0, 0)))
                 except Exception:
                     continue
                 data = extracted.get("image", b"")
@@ -98,6 +101,7 @@ def extract_document_assets(path: str) -> list[ExtractedAsset]:
                         data=data,
                         width=int(extracted.get("width", 0) or 0),
                         height=int(extracted.get("height", 0) or 0),
+                        bbox=bbox,
                     )
                 )
     return assets
