@@ -22,9 +22,8 @@ android {
             .orElse(providers.environmentVariable("FOCUSFORGE_BACKEND_URL"))
             .orElse("http://localhost:8080")
             .get()
-            .replace("\\", "\\\\")
-            .replace(""", "\"")
-        buildConfigField("String", "BACKEND_BASE_URL", ""$backendUrl"")
+            .replace("\"", "\\\"")
+        buildConfigField("String", "BACKEND_BASE_URL", "\"$backendUrl\"")
     }
 
     buildTypes {
