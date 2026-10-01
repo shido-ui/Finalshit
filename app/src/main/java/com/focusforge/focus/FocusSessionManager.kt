@@ -22,13 +22,13 @@ class FocusSessionManager(
     private val _state = MutableStateFlow(FocusState.IDLE)
     val state: StateFlow<FocusState> = _state.asStateFlow()
 
-    fun start(durationMs: Long) {
+    suspend fun start(durationMs: Long): Boolean {
         require(durationMs > 0)
         scope.launch {
             val existing = repository.activeSession.first()
             if (existing != null) {
                 recoverOrFinish(existing)
-                if (repository.activeSession.first() != null) return@launch
+                if (repository.activeSession.first() != null) return false
             }
 
             val armed = repository.createArmed(durationMs, nowMs())
@@ -43,7 +43,7 @@ class FocusSessionManager(
                 ExistingWorkPolicy.REPLACE,
                 request
             )
-        }
+            return true
     }
 
     fun cancel() {
