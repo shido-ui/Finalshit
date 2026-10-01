@@ -9,9 +9,9 @@ import pymupdf
 
 
 QUESTION_START = re.compile(
-    r"(?m)^\\s*(?:Q(?:uestion)?\\s*)?(\\d{1,4})\\s*[.)\\-:]\\s+"
+    r"(?m)^\s*(?:Q(?:uestion)?\s*)?(\d{1,4})\s*[.)\-:]\s+"
 )
-OPTION_LINE = re.compile(r"(?m)^\\s*[(\\[]?[A-Da-d][)\\].:]\\s+")
+OPTION_LINE = re.compile(r"(?m)^\s*[(\[]?[A-Da-d][)\].:]\s+")
 
 
 @dataclass(frozen=True)
