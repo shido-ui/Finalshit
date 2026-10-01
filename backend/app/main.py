@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request\nfrom fastapi.responses import Response
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -32,7 +33,21 @@ from app.knowledge.service import KnowledgeService
 from app.knowledge.store import KnowledgeStore
 from app.knowledge.taxonomy_ai import GeminiTaxonomyProposalProvider
 
-app = FastAPI(title="FocusForge AI Gateway", version="0.1.0")\n\n\n@app.middleware("http")\nasync def security_headers(request: Request, call_next) -> Response:\n    response = await call_next(request)\n    response.headers.setdefault("X-Content-Type-Options", "nosniff")\n    response.headers.setdefault("X-Frame-Options", "DENY")\n    response.headers.setdefault("Referrer-Policy", "no-referrer")\n    response.headers.setdefault("Cache-Control", "no-store")\n    request_id = request.headers.get("X-Request-ID", "").strip()\n    if not request_id or len(request_id) > 128 or any(ord(ch) < 32 or ord(ch) == 127 for ch in request_id):\n        request_id = os.urandom(8).hex()\n    response.headers["X-Request-ID"] = request_id\n    return response
+app = FastAPI(title="FocusForge AI Gateway", version="0.1.0")
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next) -> Response:
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Cache-Control", "no-store")
+    request_id = request.headers.get("X-Request-ID", "").strip()
+    if not request_id or len(request_id) > 128 or any(ord(ch) < 32 or ord(ch) == 127 for ch in request_id):
+        request_id = os.urandom(8).hex()
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 _data_dir = Path(os.getenv("FOCUSFORGE_DATA_DIR", "data"))
 intelligence_store = KnowledgeStore(_data_dir / "knowledge.db")
