@@ -76,15 +76,16 @@ class TaxonomyProposalEngine:
 
                 proposals.append(
                     TaxonomyProposal(
-                    id=proposal_id,
-                    document_id=document_id,
-                    parent_id=candidate.parent_id,
-                    name=candidate.name.strip(),
-                    level=candidate.level,
-                    confidence=candidate.confidence,
-                    evidence=candidate.evidence.strip(),
-                    provider=self.provider.name,
+                        id=proposal_id,
+                        document_id=document_id,
+                        parent_id=candidate.parent_id,
+                        name=candidate.name.strip(),
+                        level=candidate.level,
+                        confidence=candidate.confidence,
+                        evidence=candidate.evidence.strip(),
+                        provider=self.provider.name,
                     )
+                )
                 accepted_ids.add(proposal_id)
                 progress = True
 
