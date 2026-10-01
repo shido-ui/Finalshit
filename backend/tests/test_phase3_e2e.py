@@ -22,7 +22,7 @@ def build_fixture_pdf() -> bytes:
         "(C) 30 m/s\n"
         "(D) 40 m/s",
     )
-    page.insert_image(pymupdf.Rect(50, 120, 150, 180), stream=ONE_PIXEL_PNG)
+    page.insert_image(pymupdf.Rect(50, 60, 150, 120), stream=ONE_PIXEL_PNG)
     output = document.tobytes()
     document.close()
     return output
@@ -60,6 +60,7 @@ def test_phase3_ingestion_end_to_end_persists_all_core_artifacts(tmp_path):
     assert question.page_end == 1
     assert question.provenance
     assert all(item.source_hash == record.sha256 for item in question.provenance)
+    assert assets[0].id in question.asset_ids
 
     restored = store.get_document(record.id)
     assert restored is not None
